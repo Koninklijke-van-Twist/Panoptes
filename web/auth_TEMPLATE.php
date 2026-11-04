@@ -15,12 +15,18 @@ $panoptesAdmins = [
     'tfalken@kvt.nl',
 ];
 
-// App-registratie (client credentials). Nodig:
-// - Graph application permission CopilotCostManagement.Read.All + admin consent
-// - registratie als Power Platform admin app (PPAC)
-$panoptesTenantId = 'TENANT_ID';
-$panoptesClientId = 'CLIENT_ID';
-$panoptesClientSecret = 'CLIENT_SECRET';
+// App-registratie in Entra (client credentials, geen ingelogd account nodig).
+// Entra admin center > Identiteit > Toepassingen > App-registraties > [jouw app]:
+// - Overzicht: "Map-id (tenant-id)" en "Toepassings-id (client-id)".
+// - Certificaten en geheimen > Nieuw clientgeheim: neem de "Waarde" (niet de geheim-id).
+// - API-machtigingen > Microsoft Graph > Toepassingsmachtigingen:
+//   CopilotCostManagement.Read.All, daarna "Beheerderstoestemming verlenen".
+//   Gedelegeerde machtigingen zijn voor Panoptes niet nodig.
+// - Power Platform-beheercentrum > Instellingen > Beheerinstellingen > Power Platform API:
+//   registreer dezelfde client-id als beheer-app (of: pac admin application register --application-id <client-id>).
+$panoptesTenantId = 'TENANT_ID';         // Map-id (tenant-id)
+$panoptesClientId = 'CLIENT_ID';         // Toepassings-id (client-id)
+$panoptesClientSecret = 'CLIENT_SECRET'; // Waarde van het clientgeheim
 
 // Mail (zelfde als Elpis/Ponos). Zonder smtp wordt PHP mail() gebruikt.
 $reportMail = [
