@@ -1,0 +1,15 @@
+{
+    "name": "Copilot-verbruik",
+    "short_name": "Metis",
+    "icons": [
+        {
+            "src": "metis.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any"
+        }
+    ],
+    "theme_color": "#0099cc",
+    "background_color": "#ffffff",
+    "display": "standalone"
+}
