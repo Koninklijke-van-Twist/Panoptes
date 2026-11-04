@@ -1,6 +1,6 @@
 # Analytics — vaste sqlite-structuur en gebruik
 
-Dit bestand is de enige bron van waarheid voor de Metis-analyticsmodule.
+Dit bestand is de enige bron van waarheid voor de Panoptes-analyticsmodule.
 **Van deze structuur en dit gebruik mag onder geen voorwaarde worden afgeweken.**
 
 Andere implementaties (andere pagina’s, portals, cronjobs) **mogen `analytics.php` niet wijzigen, includen of kopiëren**. Ze gebruiken alleen de HTTP-call hieronder.
@@ -35,7 +35,7 @@ Geen updates, geen deletes, geen aggregatietabellen in dit bestand.
 ## Wanneer vastleggen
 
 Direct nadat `logincheck.php` heeft vastgesteld dat de gebruiker toegang heeft.
-In Metis is dat na de `allowedUsers`-check:
+In Panoptes is dat na de `allowedUsers`-check:
 
 if (!is_trusted_requester()) {
     require __DIR__ . "/../login/lib.php";

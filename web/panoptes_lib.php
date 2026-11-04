@@ -1,24 +1,24 @@
 <?php
 
 /**
- * Metis: Copilot- en AI-creditverbruik (Microsoft Graph beta + Power Platform licensing API).
- * Configuratie in auth.php ($metisTenantId, $metisClientId, $metisClientSecret, $reportMail).
+ * Panoptes: Copilot- en AI-creditverbruik (Microsoft Graph beta + Power Platform licensing API).
+ * Configuratie in auth.php ($panoptesTenantId, $panoptesClientId, $panoptesClientSecret, $reportMail).
  * Alle data (cache, instellingen, dagsnapshots, mail-state) staat in web/data/ en blijft
  * bij een deploy staan (deploy-ftp.yml slaat data/** over).
  */
 
-const METIS_CACHE_TTL = 3600; // bron is ~4 uur oud; 1 uur cache is ruim voldoende
-const METIS_GRAPH_URL = 'https://graph.microsoft.com/beta/copilot/costManagement/getTenantCreditBalance';
-const METIS_PP_URL = 'https://api.powerplatform.com/licensing/tenantCapacity/currencyReports?includeAllocations=true&includeConsumptions=true&api-version=2024-10-01';
-const METIS_MAIL_SUBJECT = 'Co-Pilot Verbruik';
+const PANOPTES_CACHE_TTL = 3600; // bron is ~4 uur oud; 1 uur cache is ruim voldoende
+const PANOPTES_GRAPH_URL = 'https://graph.microsoft.com/beta/copilot/costManagement/getTenantCreditBalance';
+const PANOPTES_PP_URL = 'https://api.powerplatform.com/licensing/tenantCapacity/currencyReports?includeAllocations=true&includeConsumptions=true&api-version=2024-10-01';
+const PANOPTES_MAIL_SUBJECT = 'Co-Pilot Verbruik';
 
 /**
  * Opslag
  */
 
-function metis_data_dir(): string
+function panoptes_data_dir(): string
 {
-    $override = $GLOBALS['METIS_DATA_DIR'] ?? null;
+    $override = $GLOBALS['PANOPTES_DATA_DIR'] ?? null;
     $dir = is_string($override) && trim($override) !== '' ? $override : (__DIR__ . '/data');
     if (!is_dir($dir)) {
         mkdir($dir, 0750, true);
@@ -30,25 +30,25 @@ function metis_data_dir(): string
     return $dir;
 }
 
-function metis_read_json(string $name, array $default = []): array
+function panoptes_read_json(string $name, array $default = []): array
 {
-    $path = metis_data_dir() . '/' . $name;
+    $path = panoptes_data_dir() . '/' . $name;
     $decoded = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
 
     return is_array($decoded) ? $decoded : $default;
 }
 
-function metis_write_json(string $name, array $payload): void
+function panoptes_write_json(string $name, array $payload): void
 {
-    $path = metis_data_dir() . '/' . $name;
+    $path = panoptes_data_dir() . '/' . $name;
     $tmp = $path . '.tmp' . getmypid();
     file_put_contents($tmp, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
     rename($tmp, $path);
 }
 
-function metis_today(): string
+function panoptes_today(): string
 {
-    $override = $GLOBALS['METIS_TODAY'] ?? null;
+    $override = $GLOBALS['PANOPTES_TODAY'] ?? null;
     if (is_string($override) && $override !== '') {
         return $override;
     }
@@ -60,9 +60,9 @@ function metis_today(): string
  * Instellingen (door beheerders aan te passen op de pagina)
  */
 
-function metis_settings(): array
+function panoptes_settings(): array
 {
-    $raw = metis_read_json('settings.json');
+    $raw = panoptes_read_json('settings.json');
     $email = strtolower(trim((string) ($raw['mail_to'] ?? '')));
     $total = $raw['cowork_limit_total'] ?? null;
 
@@ -74,23 +74,23 @@ function metis_settings(): array
     ];
 }
 
-function metis_save_settings(array $input): array
+function panoptes_save_settings(array $input): array
 {
     $total = trim((string) ($input['cowork_limit_total'] ?? ''));
-    metis_write_json('settings.json', [
+    panoptes_write_json('settings.json', [
         'cowork_limit_user' => (int) ($input['cowork_limit_user'] ?? 2000),
         'cowork_limit_total' => $total === '' ? null : (int) $total,
         'mail_to' => (string) ($input['mail_to'] ?? ''),
         'mail_enabled' => !empty($input['mail_enabled']),
     ]);
 
-    return metis_settings();
+    return panoptes_settings();
 }
 
-function metis_is_admin(string $email): bool
+function panoptes_is_admin(string $email): bool
 {
-    global $metisAdmins, $allowedUsers;
-    $list = is_array($metisAdmins ?? null) ? $metisAdmins : (is_array($allowedUsers ?? null) ? $allowedUsers : []);
+    global $panoptesAdmins, $allowedUsers;
+    $list = is_array($panoptesAdmins ?? null) ? $panoptesAdmins : (is_array($allowedUsers ?? null) ? $allowedUsers : []);
     foreach ($list as $admin) {
         if (strtolower(trim((string) $admin)) === strtolower(trim($email)) && $email !== '') {
             return true;
@@ -104,10 +104,10 @@ function metis_is_admin(string $email): bool
  * HTTP en tokens (client credentials, app-only)
  */
 
-function metis_http(string $method, string $url, array $headers = [], ?string $body = null): array
+function panoptes_http(string $method, string $url, array $headers = [], ?string $body = null): array
 {
-    if (isset($GLOBALS['METIS_HTTP']) && is_callable($GLOBALS['METIS_HTTP'])) {
-        return $GLOBALS['METIS_HTTP']($method, $url, $headers, $body);
+    if (isset($GLOBALS['PANOPTES_HTTP']) && is_callable($GLOBALS['PANOPTES_HTTP'])) {
+        return $GLOBALS['PANOPTES_HTTP']($method, $url, $headers, $body);
     }
 
     $ch = curl_init($url);
@@ -129,19 +129,19 @@ function metis_http(string $method, string $url, array $headers = [], ?string $b
     return ['status' => $status, 'body' => $response === false ? '' : (string) $response, 'error' => $error];
 }
 
-function metis_token(string $scope): string
+function panoptes_token(string $scope): string
 {
-    global $metisTenantId, $metisClientId, $metisClientSecret;
-    if (empty($metisTenantId) || empty($metisClientId) || empty($metisClientSecret)) {
+    global $panoptesTenantId, $panoptesClientId, $panoptesClientSecret;
+    if (empty($panoptesTenantId) || empty($panoptesClientId) || empty($panoptesClientSecret)) {
         throw new RuntimeException('Tenant ID, client ID of client secret ontbreekt in auth.php.');
     }
 
-    $res = metis_http('POST', 'https://login.microsoftonline.com/' . rawurlencode((string) $metisTenantId) . '/oauth2/v2.0/token',
+    $res = panoptes_http('POST', 'https://login.microsoftonline.com/' . rawurlencode((string) $panoptesTenantId) . '/oauth2/v2.0/token',
         ['Content-Type: application/x-www-form-urlencoded'],
         http_build_query([
             'grant_type' => 'client_credentials',
-            'client_id' => (string) $metisClientId,
-            'client_secret' => (string) $metisClientSecret,
+            'client_id' => (string) $panoptesClientId,
+            'client_secret' => (string) $panoptesClientSecret,
             'scope' => $scope,
         ]));
     $json = json_decode($res['body'], true);
@@ -157,11 +157,11 @@ function metis_token(string $scope): string
  * Haalt een bron op. Resultaat: ['ok' => bool, 'status' => int, 'data' => array|null, 'error' => string, 'fetched_at' => int].
  * Fouten (403, onverwachte vorm) worden als resultaat teruggegeven zodat de pagina ze netjes toont.
  */
-function metis_fetch_source(string $url, string $scope): array
+function panoptes_fetch_source(string $url, string $scope): array
 {
     $result = ['ok' => false, 'status' => 0, 'data' => null, 'error' => '', 'fetched_at' => time()];
     try {
-        $res = metis_http('GET', $url, ['Authorization: Bearer ' . metis_token($scope), 'Accept: application/json']);
+        $res = panoptes_http('GET', $url, ['Authorization: Bearer ' . panoptes_token($scope), 'Accept: application/json']);
     } catch (Throwable $e) {
         $result['error'] = $e->getMessage();
 
@@ -191,16 +191,16 @@ function metis_fetch_source(string $url, string $scope): array
 /**
  * Haalt beide bronnen op (met cache in data/cache.json).
  */
-function metis_load(bool $refresh = false): array
+function panoptes_load(bool $refresh = false): array
 {
-    $cache = metis_read_json('cache.json');
-    $fresh = isset($cache['fetched_at']) && (time() - (int) $cache['fetched_at']) < METIS_CACHE_TTL;
+    $cache = panoptes_read_json('cache.json');
+    $fresh = isset($cache['fetched_at']) && (time() - (int) $cache['fetched_at']) < PANOPTES_CACHE_TTL;
     if (!$refresh && $fresh) {
         return $cache;
     }
 
-    $copilot = metis_fetch_source(METIS_GRAPH_URL, 'https://graph.microsoft.com/.default');
-    $pp = metis_fetch_source(METIS_PP_URL, 'https://api.powerplatform.com/.default');
+    $copilot = panoptes_fetch_source(PANOPTES_GRAPH_URL, 'https://graph.microsoft.com/.default');
+    $pp = panoptes_fetch_source(PANOPTES_PP_URL, 'https://api.powerplatform.com/.default');
     // Bij een fout de laatste goede data bewaren, met de nieuwe foutmelding erbij.
     foreach (['copilot' => $copilot, 'powerplatform' => $pp] as $key => $source) {
         if (!$source['ok'] && !empty($cache[$key]['ok'])) {
@@ -211,7 +211,7 @@ function metis_load(bool $refresh = false): array
         $cache[$key] = $source;
     }
     $cache['fetched_at'] = time();
-    metis_write_json('cache.json', $cache);
+    panoptes_write_json('cache.json', $cache);
 
     return $cache;
 }
@@ -220,7 +220,7 @@ function metis_load(bool $refresh = false): array
  * Parsing (defensief: veldnamen zijn nog niet geverifieerd tegen een echt antwoord)
  */
 
-function metis_num($value): ?float
+function panoptes_num($value): ?float
 {
     if (is_int($value) || is_float($value)) {
         return (float) $value;
@@ -235,7 +235,7 @@ function metis_num($value): ?float
 /**
  * Graph getTenantCreditBalance -> ['rows' => [...], 'last_modified' => ?string, 'recognized' => bool].
  */
-function metis_parse_copilot(?array $data): array
+function panoptes_parse_copilot(?array $data): array
 {
     $out = ['rows' => [], 'last_modified' => null, 'recognized' => false];
     if (!is_array($data)) {
@@ -252,9 +252,9 @@ function metis_parse_copilot(?array $data): array
         if (!is_array($item)) {
             continue;
         }
-        $purchased = metis_num($item['purchasedQuantity'] ?? null);
-        $consumed = metis_num($item['consumedQuantity'] ?? null);
-        $remaining = metis_num($item['remainingQuantity'] ?? null);
+        $purchased = panoptes_num($item['purchasedQuantity'] ?? null);
+        $consumed = panoptes_num($item['consumedQuantity'] ?? null);
+        $remaining = panoptes_num($item['remainingQuantity'] ?? null);
         if ($remaining === null && $purchased !== null && $consumed !== null) {
             $remaining = $purchased - $consumed;
         }
@@ -272,7 +272,7 @@ function metis_parse_copilot(?array $data): array
 /**
  * Power Platform currencyReports -> ['rows' => [...], 'recognized' => bool].
  */
-function metis_parse_powerplatform(?array $data): array
+function panoptes_parse_powerplatform(?array $data): array
 {
     $out = ['rows' => [], 'recognized' => false];
     if (!is_array($data)) {
@@ -290,9 +290,9 @@ function metis_parse_powerplatform(?array $data): array
         $consumed = $item['consumed'] ?? null;
         $out['rows'][] = [
             'name' => (string) $item['currencyType'],
-            'purchased' => metis_num($item['purchased'] ?? null),
-            'allocated' => metis_num($item['allocated'] ?? null),
-            'consumed' => metis_num(is_array($consumed) ? ($consumed['unitsConsumed'] ?? null) : $consumed),
+            'purchased' => panoptes_num($item['purchased'] ?? null),
+            'allocated' => panoptes_num($item['allocated'] ?? null),
+            'consumed' => panoptes_num(is_array($consumed) ? ($consumed['unitsConsumed'] ?? null) : $consumed),
             'last_updated' => is_array($consumed) && isset($consumed['lastUpdatedDay']) ? (string) $consumed['lastUpdatedDay'] : null,
         ];
     }
@@ -303,13 +303,13 @@ function metis_parse_powerplatform(?array $data): array
 /**
  * Compacte stand voor snapshots en mail: ['copilot' => [naam => [...]], 'powerplatform' => [naam => [...]]].
  */
-function metis_summary(array $loaded): array
+function panoptes_summary(array $loaded): array
 {
     $summary = ['copilot' => [], 'powerplatform' => []];
-    foreach (metis_parse_copilot($loaded['copilot']['data'] ?? null)['rows'] as $row) {
+    foreach (panoptes_parse_copilot($loaded['copilot']['data'] ?? null)['rows'] as $row) {
         $summary['copilot'][$row['name']] = ['purchased' => $row['purchased'], 'consumed' => $row['consumed'], 'remaining' => $row['remaining']];
     }
-    foreach (metis_parse_powerplatform($loaded['powerplatform']['data'] ?? null)['rows'] as $row) {
+    foreach (panoptes_parse_powerplatform($loaded['powerplatform']['data'] ?? null)['rows'] as $row) {
         $summary['powerplatform'][$row['name']] = ['purchased' => $row['purchased'], 'allocated' => $row['allocated'], 'consumed' => $row['consumed']];
     }
 
@@ -320,28 +320,28 @@ function metis_summary(array $loaded): array
  * Historie (data/history.json: datum => summary)
  */
 
-function metis_history(): array
+function panoptes_history(): array
 {
-    $history = metis_read_json('history.json');
+    $history = panoptes_read_json('history.json');
     ksort($history);
 
     return $history;
 }
 
-function metis_store_snapshot(string $date, array $summary): void
+function panoptes_store_snapshot(string $date, array $summary): void
 {
     if ($summary['copilot'] === [] && $summary['powerplatform'] === []) {
         return; // geen lege dagen opslaan bij een fout
     }
-    $history = metis_history();
+    $history = panoptes_history();
     $history[$date] = $summary;
-    metis_write_json('history.json', $history);
+    panoptes_write_json('history.json', $history);
 }
 
 /**
  * Laatste snapshot per periode (ISO-week 'o-\WW' of maand 'Y-m'), oudste eerst.
  */
-function metis_history_by_period(array $history, string $format): array
+function panoptes_history_by_period(array $history, string $format): array
 {
     $periods = [];
     foreach ($history as $date => $summary) {
@@ -354,7 +354,7 @@ function metis_history_by_period(array $history, string $format): array
 /**
  * Snapshot van (ongeveer) een week geleden: de laatste snapshot op of voor $date - 7 dagen.
  */
-function metis_snapshot_week_before(array $history, string $date): ?array
+function panoptes_snapshot_week_before(array $history, string $date): ?array
 {
     $limit = (new DateTimeImmutable($date))->modify('-7 days')->format('Y-m-d');
     $found = null;
@@ -371,35 +371,35 @@ function metis_snapshot_week_before(array $history, string $date): ?array
  * Wekelijkse mail (vrijdag, max 1x per ISO-week)
  */
 
-function metis_week_key(string $date): string
+function panoptes_week_key(string $date): string
 {
     return (new DateTimeImmutable($date))->format('o-\WW');
 }
 
-const METIS_MAIL_HOUR = 7; // vrijdag vanaf 07:00 (Europe/Amsterdam)
+const PANOPTES_MAIL_HOUR = 7; // vrijdag vanaf 07:00 (Europe/Amsterdam)
 
-function metis_hour(): int
+function panoptes_hour(): int
 {
-    $override = $GLOBALS['METIS_HOUR'] ?? null;
+    $override = $GLOBALS['PANOPTES_HOUR'] ?? null;
 
     return is_int($override) ? $override : (int) (new DateTimeImmutable('now', new DateTimeZone('Europe/Amsterdam')))->format('G');
 }
 
-function metis_mail_due(string $date, array $state, int $hour = METIS_MAIL_HOUR): bool
+function panoptes_mail_due(string $date, array $state, int $hour = PANOPTES_MAIL_HOUR): bool
 {
-    if ((new DateTimeImmutable($date))->format('N') !== '5' || $hour < METIS_MAIL_HOUR) {
+    if ((new DateTimeImmutable($date))->format('N') !== '5' || $hour < PANOPTES_MAIL_HOUR) {
         return false;
     }
 
-    return ($state['last_week'] ?? '') !== metis_week_key($date);
+    return ($state['last_week'] ?? '') !== panoptes_week_key($date);
 }
 
-function metis_fmt(?float $value): string
+function panoptes_fmt(?float $value): string
 {
     return $value === null ? '–' : number_format($value, 0, ',', '.');
 }
 
-function metis_delta(?float $now, ?float $before): string
+function panoptes_delta(?float $now, ?float $before): string
 {
     if ($now === null || $before === null) {
         return '–';
@@ -409,7 +409,7 @@ function metis_delta(?float $now, ?float $before): string
     return ($diff > 0 ? '+' : '') . number_format($diff, 0, ',', '.');
 }
 
-function metis_mail_tables(array $summary, ?array $previous, array $settings): array
+function panoptes_mail_tables(array $summary, ?array $previous, array $settings): array
 {
     $sections = [
         'copilot' => ['Copilot-credits', ['purchased' => 'Gekocht', 'consumed' => 'Verbruikt', 'remaining' => 'Resterend']],
@@ -429,22 +429,22 @@ function metis_mail_tables(array $summary, ?array $previous, array $settings): a
             $html .= '<tr><td colspan="' . (count($cols) + 2) . '">geen data</td></tr>';
         }
         foreach ($summary[$key] ?? [] as $name => $values) {
-            $delta = metis_delta($values['consumed'] ?? null, $previous[$key][$name]['consumed'] ?? null);
+            $delta = panoptes_delta($values['consumed'] ?? null, $previous[$key][$name]['consumed'] ?? null);
             $parts = [];
             $html .= '<tr><td>' . htmlspecialchars((string) $name) . '</td>';
             foreach ($cols as $field => $label) {
-                $parts[] = $label . ' ' . metis_fmt($values[$field] ?? null);
-                $html .= '<td align="right">' . metis_fmt($values[$field] ?? null) . '</td>';
+                $parts[] = $label . ' ' . panoptes_fmt($values[$field] ?? null);
+                $html .= '<td align="right">' . panoptes_fmt($values[$field] ?? null) . '</td>';
             }
             $html .= '<td align="right">' . $delta . '</td></tr>';
             $plain .= '  ' . $name . ': ' . implode(', ', $parts) . ' (verbruik vs vorige week: ' . $delta . ")\n";
         }
         $html .= '</table>';
     }
-    $limits = 'Cowork-limiet per gebruiker: ' . metis_fmt((float) $settings['cowork_limit_user'])
-        . ', totaal per maand: ' . ($settings['cowork_limit_total'] === null ? 'niet ingesteld' : metis_fmt((float) $settings['cowork_limit_total']));
-    $plain .= "\n" . $limits . "\n\nhttps://sleutels.kvt.nl/metis/\n";
-    $html .= '<p>' . $limits . '</p><p><a href="https://sleutels.kvt.nl/metis/">sleutels.kvt.nl/metis</a></p>';
+    $limits = 'Cowork-limiet per gebruiker: ' . panoptes_fmt((float) $settings['cowork_limit_user'])
+        . ', totaal per maand: ' . ($settings['cowork_limit_total'] === null ? 'niet ingesteld' : panoptes_fmt((float) $settings['cowork_limit_total']));
+    $plain .= "\n" . $limits . "\n\nhttps://sleutels.kvt.nl/panoptes/\n";
+    $html .= '<p>' . $limits . '</p><p><a href="https://sleutels.kvt.nl/panoptes/">sleutels.kvt.nl/panoptes</a></p>';
 
     return ['plain' => 'Copilot- en AI-creditverbruik KVT' . "\n" . $plain, 'html' => '<h2>Copilot- en AI-creditverbruik KVT</h2>' . $html];
 }
@@ -452,35 +452,35 @@ function metis_mail_tables(array $summary, ?array $previous, array $settings): a
 /**
  * Verstuurt de weekmail als die vandaag (vrijdag) nog niet ging. Geeft een korte status terug.
  */
-function metis_maybe_send_weekly(array $summary): string
+function panoptes_maybe_send_weekly(array $summary): string
 {
-    $date = metis_today();
-    $settings = metis_settings();
-    $state = metis_read_json('mail_state.json');
+    $date = panoptes_today();
+    $settings = panoptes_settings();
+    $state = panoptes_read_json('mail_state.json');
     if (!$settings['mail_enabled']) {
         return 'uitgeschakeld';
     }
-    if (!metis_mail_due($date, $state, metis_hour())) {
+    if (!panoptes_mail_due($date, $state, panoptes_hour())) {
         return 'niet nodig';
     }
     if ($summary['copilot'] === [] && $summary['powerplatform'] === []) {
         return 'geen data';
     }
 
-    $lock = fopen(metis_data_dir() . '/mail.lock', 'c');
+    $lock = fopen(panoptes_data_dir() . '/mail.lock', 'c');
     if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
         return 'bezig';
     }
     try {
-        $state = metis_read_json('mail_state.json'); // opnieuw lezen binnen de lock
-        if (!metis_mail_due($date, $state, metis_hour())) {
+        $state = panoptes_read_json('mail_state.json'); // opnieuw lezen binnen de lock
+        if (!panoptes_mail_due($date, $state, panoptes_hour())) {
             return 'niet nodig';
         }
-        $body = metis_mail_tables($summary, metis_snapshot_week_before(metis_history(), $date), $settings);
-        if (!metis_mail_send($settings['mail_to'], METIS_MAIL_SUBJECT, $body['plain'], $body['html'])) {
+        $body = panoptes_mail_tables($summary, panoptes_snapshot_week_before(panoptes_history(), $date), $settings);
+        if (!panoptes_mail_send($settings['mail_to'], PANOPTES_MAIL_SUBJECT, $body['plain'], $body['html'])) {
             return 'mislukt';
         }
-        metis_write_json('mail_state.json', ['last_week' => metis_week_key($date), 'sent_at' => date('c'), 'to' => $settings['mail_to']]);
+        panoptes_write_json('mail_state.json', ['last_week' => panoptes_week_key($date), 'sent_at' => date('c'), 'to' => $settings['mail_to']]);
 
         return 'verzonden naar ' . $settings['mail_to'];
     } finally {
@@ -493,7 +493,7 @@ function metis_maybe_send_weekly(array $summary): string
  * Mail versturen: zelfde mechanisme als Elpis/Ponos ($reportMail uit auth.php, SMTP of PHP mail()).
  */
 
-function metis_mail_smtp_settings(): ?array
+function panoptes_mail_smtp_settings(): ?array
 {
     global $reportMail;
     if (!is_array($reportMail ?? null)) {
@@ -520,7 +520,7 @@ function metis_mail_smtp_settings(): ?array
     ];
 }
 
-function metis_mail_smtp_read($socket): string
+function panoptes_mail_smtp_read($socket): string
 {
     $data = '';
     while (is_resource($socket) && !feof($socket)) {
@@ -537,7 +537,7 @@ function metis_mail_smtp_read($socket): string
     return $data;
 }
 
-function metis_mail_smtp_expect(string $response, array $codes): bool
+function panoptes_mail_smtp_expect(string $response, array $codes): bool
 {
     if ($response === '') {
         return false;
@@ -546,7 +546,7 @@ function metis_mail_smtp_expect(string $response, array $codes): bool
     return in_array((int) substr($response, 0, 3), $codes, true);
 }
 
-function metis_mail_smtp_dot_stuff(string $body): string
+function panoptes_mail_smtp_dot_stuff(string $body): string
 {
     $lines = preg_split("/\r\n|\n|\r/", $body) ?: [];
     $stuffed = [];
@@ -560,7 +560,7 @@ function metis_mail_smtp_dot_stuff(string $body): string
     return implode("\r\n", $stuffed);
 }
 
-function metis_mail_send_smtp(
+function panoptes_mail_send_smtp(
     string $to,
     string $fromEmail,
     string $fromName,
@@ -568,7 +568,7 @@ function metis_mail_send_smtp(
     string $mimeHeaders,
     string $body
 ): bool {
-    $smtp = metis_mail_smtp_settings();
+    $smtp = panoptes_mail_smtp_settings();
     if ($smtp === null) {
         return false;
     }
@@ -586,18 +586,18 @@ function metis_mail_send_smtp(
         return false;
     };
 
-    if (!metis_mail_smtp_expect(metis_mail_smtp_read($socket), [220])) {
+    if (!panoptes_mail_smtp_expect(panoptes_mail_smtp_read($socket), [220])) {
         return $fail($socket);
     }
 
     fwrite($socket, "EHLO elpis.local\r\n");
-    if (!metis_mail_smtp_expect(metis_mail_smtp_read($socket), [250])) {
+    if (!panoptes_mail_smtp_expect(panoptes_mail_smtp_read($socket), [250])) {
         return $fail($socket);
     }
 
     if ($smtp['encryption'] === 'tls') {
         fwrite($socket, "STARTTLS\r\n");
-        if (!metis_mail_smtp_expect(metis_mail_smtp_read($socket), [220])) {
+        if (!panoptes_mail_smtp_expect(panoptes_mail_smtp_read($socket), [220])) {
             return $fail($socket);
         }
 
@@ -610,36 +610,36 @@ function metis_mail_send_smtp(
         }
 
         fwrite($socket, "EHLO elpis.local\r\n");
-        if (!metis_mail_smtp_expect(metis_mail_smtp_read($socket), [250])) {
+        if (!panoptes_mail_smtp_expect(panoptes_mail_smtp_read($socket), [250])) {
             return $fail($socket);
         }
     }
 
     if ($smtp['username'] !== '' && $smtp['password'] !== '') {
         fwrite($socket, "AUTH LOGIN\r\n");
-        if (!metis_mail_smtp_expect(metis_mail_smtp_read($socket), [334])) {
+        if (!panoptes_mail_smtp_expect(panoptes_mail_smtp_read($socket), [334])) {
             return $fail($socket);
         }
         fwrite($socket, base64_encode($smtp['username']) . "\r\n");
-        if (!metis_mail_smtp_expect(metis_mail_smtp_read($socket), [334])) {
+        if (!panoptes_mail_smtp_expect(panoptes_mail_smtp_read($socket), [334])) {
             return $fail($socket);
         }
         fwrite($socket, base64_encode($smtp['password']) . "\r\n");
-        if (!metis_mail_smtp_expect(metis_mail_smtp_read($socket), [235])) {
+        if (!panoptes_mail_smtp_expect(panoptes_mail_smtp_read($socket), [235])) {
             return $fail($socket);
         }
     }
 
     fwrite($socket, 'MAIL FROM:<' . $fromEmail . ">\r\n");
-    if (!metis_mail_smtp_expect(metis_mail_smtp_read($socket), [250])) {
+    if (!panoptes_mail_smtp_expect(panoptes_mail_smtp_read($socket), [250])) {
         return $fail($socket);
     }
     fwrite($socket, 'RCPT TO:<' . $to . ">\r\n");
-    if (!metis_mail_smtp_expect(metis_mail_smtp_read($socket), [250, 251])) {
+    if (!panoptes_mail_smtp_expect(panoptes_mail_smtp_read($socket), [250, 251])) {
         return $fail($socket);
     }
     fwrite($socket, "DATA\r\n");
-    if (!metis_mail_smtp_expect(metis_mail_smtp_read($socket), [354])) {
+    if (!panoptes_mail_smtp_expect(panoptes_mail_smtp_read($socket), [354])) {
         return $fail($socket);
     }
 
@@ -648,9 +648,9 @@ function metis_mail_send_smtp(
         . 'Subject: ' . $encodedSubject . "\r\n"
         . "MIME-Version: 1.0\r\n"
         . $mimeHeaders . "\r\n\r\n"
-        . metis_mail_smtp_dot_stuff($body);
+        . panoptes_mail_smtp_dot_stuff($body);
     fwrite($socket, $payload . "\r\n.\r\n");
-    if (!metis_mail_smtp_expect(metis_mail_smtp_read($socket), [250])) {
+    if (!panoptes_mail_smtp_expect(panoptes_mail_smtp_read($socket), [250])) {
         return $fail($socket);
     }
 
@@ -660,26 +660,26 @@ function metis_mail_send_smtp(
     return true;
 }
 
-function metis_mail_send(string $to, string $subject, string $plain, string $html): bool
+function panoptes_mail_send(string $to, string $subject, string $plain, string $html): bool
 {
     $to = strtolower(trim($to));
     if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
         return false;
     }
 
-    if (isset($GLOBALS['METIS_MAIL_SENDER']) && is_callable($GLOBALS['METIS_MAIL_SENDER'])) {
-        return (bool) $GLOBALS['METIS_MAIL_SENDER']($to, $subject, $plain, $html);
+    if (isset($GLOBALS['PANOPTES_MAIL_SENDER']) && is_callable($GLOBALS['PANOPTES_MAIL_SENDER'])) {
+        return (bool) $GLOBALS['PANOPTES_MAIL_SENDER']($to, $subject, $plain, $html);
     }
 
     global $reportMail;
     $fromEmail = 'kvtbot@kvt.nl';
-    $fromName = 'Metis';
+    $fromName = 'Panoptes';
     if (is_array($reportMail ?? null)) {
         $fromEmail = (string) ($reportMail['from_email'] ?? $fromEmail);
         $fromName = (string) ($reportMail['from_name'] ?? $fromName);
     }
 
-    $boundary = 'metis_' . bin2hex(random_bytes(8));
+    $boundary = 'panoptes_' . bin2hex(random_bytes(8));
     $encodedSubject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
     $mimeHeaders = 'Content-Type: multipart/alternative; boundary="' . $boundary . '"';
     $body = '--' . $boundary . "\r\n"
@@ -692,7 +692,7 @@ function metis_mail_send(string $to, string $subject, string $plain, string $htm
         . $html . "\r\n"
         . '--' . $boundary . '--';
 
-    if (metis_mail_smtp_settings() !== null && metis_mail_send_smtp($to, $fromEmail, $fromName, $encodedSubject, $mimeHeaders, $body)) {
+    if (panoptes_mail_smtp_settings() !== null && panoptes_mail_send_smtp($to, $fromEmail, $fromName, $encodedSubject, $mimeHeaders, $body)) {
         return true;
     }
 

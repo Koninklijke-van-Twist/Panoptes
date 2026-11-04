@@ -5,15 +5,15 @@
  */
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/logincheck.php';
-require_once __DIR__ . '/metis_lib.php';
+require_once __DIR__ . '/panoptes_lib.php';
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
     @session_start();
 }
-if (empty($_SESSION['metis_csrf'])) {
-    $_SESSION['metis_csrf'] = bin2hex(random_bytes(16));
+if (empty($_SESSION['panoptes_csrf'])) {
+    $_SESSION['panoptes_csrf'] = bin2hex(random_bytes(16));
 }
-$csrf = (string) $_SESSION['metis_csrf'];
+$csrf = (string) $_SESSION['panoptes_csrf'];
 $userEmail = strtolower(trim((string) ($_SESSION['user']['email'] ?? '')));
 
 require_once __DIR__ . '/localization.php';
@@ -27,7 +27,7 @@ function h(?string $value): string
     return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
-function metis_dt(?string $value): string
+function panoptes_dt(?string $value): string
 {
     if ($value === null || $value === '') {
         return '–';
@@ -39,26 +39,26 @@ function metis_dt(?string $value): string
     }
 }
 
-function metis_render_error(array $source): void
+function panoptes_render_error(array $source): void
 {
     if (($source['error'] ?? '') === '') {
         return;
     }
-    echo '<p class="error">' . h(LOC('metis.error')) . ': ' . h((string) $source['error']) . '</p>';
+    echo '<p class="error">' . h(LOC('panoptes.error')) . ': ' . h((string) $source['error']) . '</p>';
     if (!empty($source['stale'])) {
-        echo '<p class="muted">' . h(LOC('metis.stale', date('d-m-Y H:i', (int) $source['fetched_at']))) . '</p>';
+        echo '<p class="muted">' . h(LOC('panoptes.stale', date('d-m-Y H:i', (int) $source['fetched_at']))) . '</p>';
     }
 }
 
-function metis_render_raw(array $source): void
+function panoptes_render_raw(array $source): void
 {
     if (is_array($source['data'] ?? null)) {
-        echo '<p class="muted">' . h(LOC('metis.unrecognized')) . '</p><pre>'
+        echo '<p class="muted">' . h(LOC('panoptes.unrecognized')) . '</p><pre>'
             . h(json_encode($source['data'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) . '</pre>';
     }
 }
 
-function metis_render_trend(array $periods, string $key): void
+function panoptes_render_trend(array $periods, string $key): void
 {
     $periods = array_slice($periods, -12, null, true);
     $names = [];
@@ -70,7 +70,7 @@ function metis_render_trend(array $periods, string $key): void
     if ($names === []) {
         return;
     }
-    echo '<table><tr><th>' . h(LOC('metis.col.period')) . '</th>';
+    echo '<table><tr><th>' . h(LOC('panoptes.col.period')) . '</th>';
     foreach (array_keys($names) as $name) {
         echo '<th>' . h((string) $name) . '</th>';
     }
@@ -80,8 +80,8 @@ function metis_render_trend(array $periods, string $key): void
         echo '<tr><td>' . h((string) $period) . '</td>';
         foreach (array_keys($names) as $name) {
             $now = $summary[$key][$name]['consumed'] ?? null;
-            $delta = $previous === null ? '' : ' <span class="muted">(' . metis_delta($now, $previous[$key][$name]['consumed'] ?? null) . ')</span>';
-            echo '<td class="num">' . metis_fmt($now) . $delta . '</td>';
+            $delta = $previous === null ? '' : ' <span class="muted">(' . panoptes_delta($now, $previous[$key][$name]['consumed'] ?? null) . ')</span>';
+            echo '<td class="num">' . panoptes_fmt($now) . $delta . '</td>';
         }
         echo '</tr>';
         $previous = $summary;
@@ -93,21 +93,21 @@ function metis_render_trend(array $periods, string $key): void
  * Page load
  */
 
-$isAdmin = metis_is_admin($userEmail);
+$isAdmin = panoptes_is_admin($userEmail);
 $notice = '';
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $isAdmin && hash_equals($csrf, (string) ($_POST['csrf'] ?? ''))) {
-    metis_save_settings($_POST);
-    $notice = LOC('metis.settings.saved');
+    panoptes_save_settings($_POST);
+    $notice = LOC('panoptes.settings.saved');
 }
 
-$loaded = metis_load(isset($_GET['refresh']) && $isAdmin);
-$settings = metis_settings();
-$copilot = metis_parse_copilot($loaded['copilot']['data'] ?? null);
-$pp = metis_parse_powerplatform($loaded['powerplatform']['data'] ?? null);
-$history = metis_history();
-$weeks = metis_history_by_period($history, 'o-\WW');
-$months = metis_history_by_period($history, 'Y-m');
-$mailState = metis_read_json('mail_state.json');
+$loaded = panoptes_load(isset($_GET['refresh']) && $isAdmin);
+$settings = panoptes_settings();
+$copilot = panoptes_parse_copilot($loaded['copilot']['data'] ?? null);
+$pp = panoptes_parse_powerplatform($loaded['powerplatform']['data'] ?? null);
+$history = panoptes_history();
+$weeks = panoptes_history_by_period($history, 'o-\WW');
+$months = panoptes_history_by_period($history, 'Y-m');
+$mailState = panoptes_read_json('mail_state.json');
 ?><!DOCTYPE html>
 <html lang="<?= h(getHtmlLang()) ?>">
 <head>
@@ -116,7 +116,7 @@ $mailState = metis_read_json('mail_state.json');
     <title><?= h(LOC('app.title')) ?></title>
     <link rel="stylesheet" href="brand.css?v=<?= (int) @filemtime(__DIR__ . '/brand.css') ?>">
     <link rel="manifest" href="site.webmanifest">
-    <link rel="icon" href="metis.svg" type="image/svg+xml">
+    <link rel="icon" href="panoptes.svg" type="image/svg+xml">
     <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <?php renderLanguageSwitcherStyles(); ?>
@@ -146,79 +146,79 @@ $mailState = metis_read_json('mail_state.json');
     <header>
         <img src="logo-website.png" alt="KVT">
         <h1><?= h(LOC('app.title')) ?></h1>
-        <p class="muted"><?= h(LOC('metis.subtitle')) ?>
-            <?= h(LOC('metis.fetched', isset($loaded['fetched_at']) ? date('d-m-Y H:i', (int) $loaded['fetched_at']) : '–')) ?>
-            <?php if ($isAdmin): ?> · <a href="?refresh=1"><?= h(LOC('metis.refresh')) ?></a><?php endif; ?>
+        <p class="muted"><?= h(LOC('panoptes.subtitle')) ?>
+            <?= h(LOC('panoptes.fetched', isset($loaded['fetched_at']) ? date('d-m-Y H:i', (int) $loaded['fetched_at']) : '–')) ?>
+            <?php if ($isAdmin): ?> · <a href="?refresh=1"><?= h(LOC('panoptes.refresh')) ?></a><?php endif; ?>
         </p>
         <?php if ($notice !== ''): ?><p class="notice"><?= h($notice) ?></p><?php endif; ?>
     </header>
 
     <section>
-        <h2><?= h(LOC('metis.copilot')) ?></h2>
-        <?php metis_render_error($loaded['copilot'] ?? []); ?>
+        <h2><?= h(LOC('panoptes.copilot')) ?></h2>
+        <?php panoptes_render_error($loaded['copilot'] ?? []); ?>
         <?php if ($copilot['recognized']): ?>
-            <?php if ($copilot['rows'] === []): ?><p class="muted"><?= h(LOC('metis.empty')) ?></p><?php else: ?>
+            <?php if ($copilot['rows'] === []): ?><p class="muted"><?= h(LOC('panoptes.empty')) ?></p><?php else: ?>
             <table>
-                <tr><th><?= h(LOC('metis.col.method')) ?></th><th class="num"><?= h(LOC('metis.col.purchased')) ?></th><th class="num"><?= h(LOC('metis.col.consumed')) ?></th><th class="num"><?= h(LOC('metis.col.remaining')) ?></th><th><?= h(LOC('metis.col.updated')) ?></th></tr>
+                <tr><th><?= h(LOC('panoptes.col.method')) ?></th><th class="num"><?= h(LOC('panoptes.col.purchased')) ?></th><th class="num"><?= h(LOC('panoptes.col.consumed')) ?></th><th class="num"><?= h(LOC('panoptes.col.remaining')) ?></th><th><?= h(LOC('panoptes.col.updated')) ?></th></tr>
                 <?php foreach ($copilot['rows'] as $row): ?>
-                    <tr><td><?= h($row['name']) ?></td><td class="num"><?= metis_fmt($row['purchased']) ?></td><td class="num"><?= metis_fmt($row['consumed']) ?></td><td class="num"><?= metis_fmt($row['remaining']) ?></td><td><?= h(metis_dt($copilot['last_modified'])) ?></td></tr>
+                    <tr><td><?= h($row['name']) ?></td><td class="num"><?= panoptes_fmt($row['purchased']) ?></td><td class="num"><?= panoptes_fmt($row['consumed']) ?></td><td class="num"><?= panoptes_fmt($row['remaining']) ?></td><td><?= h(panoptes_dt($copilot['last_modified'])) ?></td></tr>
                 <?php endforeach; ?>
             </table>
             <?php endif; ?>
-        <?php else: metis_render_raw($loaded['copilot'] ?? []); endif; ?>
+        <?php else: panoptes_render_raw($loaded['copilot'] ?? []); endif; ?>
     </section>
 
     <section>
-        <h2><?= h(LOC('metis.cowork')) ?></h2>
+        <h2><?= h(LOC('panoptes.cowork')) ?></h2>
         <table>
-            <tr><td><?= h(LOC('metis.limit.user')) ?></td><td class="num"><?= metis_fmt((float) $settings['cowork_limit_user']) ?></td></tr>
-            <tr><td><?= h(LOC('metis.limit.total')) ?></td><td class="num"><?= $settings['cowork_limit_total'] === null ? h(LOC('metis.limit.unset')) : metis_fmt((float) $settings['cowork_limit_total']) ?></td></tr>
+            <tr><td><?= h(LOC('panoptes.limit.user')) ?></td><td class="num"><?= panoptes_fmt((float) $settings['cowork_limit_user']) ?></td></tr>
+            <tr><td><?= h(LOC('panoptes.limit.total')) ?></td><td class="num"><?= $settings['cowork_limit_total'] === null ? h(LOC('panoptes.limit.unset')) : panoptes_fmt((float) $settings['cowork_limit_total']) ?></td></tr>
         </table>
-        <p class="muted"><?= h(LOC('metis.limit.note')) ?></p>
+        <p class="muted"><?= h(LOC('panoptes.limit.note')) ?></p>
     </section>
 
     <section>
-        <h2><?= h(LOC('metis.pp')) ?></h2>
-        <?php metis_render_error($loaded['powerplatform'] ?? []); ?>
+        <h2><?= h(LOC('panoptes.pp')) ?></h2>
+        <?php panoptes_render_error($loaded['powerplatform'] ?? []); ?>
         <?php if ($pp['recognized']): ?>
-            <?php if ($pp['rows'] === []): ?><p class="muted"><?= h(LOC('metis.empty')) ?></p><?php else: ?>
+            <?php if ($pp['rows'] === []): ?><p class="muted"><?= h(LOC('panoptes.empty')) ?></p><?php else: ?>
             <table>
-                <tr><th><?= h(LOC('metis.col.category')) ?></th><th class="num"><?= h(LOC('metis.col.purchased')) ?></th><th class="num"><?= h(LOC('metis.col.allocated')) ?></th><th class="num"><?= h(LOC('metis.col.consumed')) ?></th><th><?= h(LOC('metis.col.updated')) ?></th></tr>
+                <tr><th><?= h(LOC('panoptes.col.category')) ?></th><th class="num"><?= h(LOC('panoptes.col.purchased')) ?></th><th class="num"><?= h(LOC('panoptes.col.allocated')) ?></th><th class="num"><?= h(LOC('panoptes.col.consumed')) ?></th><th><?= h(LOC('panoptes.col.updated')) ?></th></tr>
                 <?php foreach ($pp['rows'] as $row): ?>
-                    <tr><td><?= h($row['name']) ?></td><td class="num"><?= metis_fmt($row['purchased']) ?></td><td class="num"><?= metis_fmt($row['allocated']) ?></td><td class="num"><?= metis_fmt($row['consumed']) ?></td><td><?= h(metis_dt($row['last_updated'])) ?></td></tr>
+                    <tr><td><?= h($row['name']) ?></td><td class="num"><?= panoptes_fmt($row['purchased']) ?></td><td class="num"><?= panoptes_fmt($row['allocated']) ?></td><td class="num"><?= panoptes_fmt($row['consumed']) ?></td><td><?= h(panoptes_dt($row['last_updated'])) ?></td></tr>
                 <?php endforeach; ?>
             </table>
             <?php endif; ?>
-        <?php else: metis_render_raw($loaded['powerplatform'] ?? []); endif; ?>
+        <?php else: panoptes_render_raw($loaded['powerplatform'] ?? []); endif; ?>
     </section>
 
-    <?php foreach (['metis.trend.week' => $weeks, 'metis.trend.month' => $months] as $titleKey => $periods): ?>
+    <?php foreach (['panoptes.trend.week' => $weeks, 'panoptes.trend.month' => $months] as $titleKey => $periods): ?>
     <section>
         <h2><?= h(LOC($titleKey)) ?></h2>
         <?php if ($periods === []): ?>
-            <p class="muted"><?= h(LOC('metis.trend.empty')) ?></p>
+            <p class="muted"><?= h(LOC('panoptes.trend.empty')) ?></p>
         <?php else: ?>
-            <h3><?= h(LOC('metis.copilot')) ?></h3><?php metis_render_trend($periods, 'copilot'); ?>
-            <h3><?= h(LOC('metis.pp')) ?></h3><?php metis_render_trend($periods, 'powerplatform'); ?>
+            <h3><?= h(LOC('panoptes.copilot')) ?></h3><?php panoptes_render_trend($periods, 'copilot'); ?>
+            <h3><?= h(LOC('panoptes.pp')) ?></h3><?php panoptes_render_trend($periods, 'powerplatform'); ?>
         <?php endif; ?>
     </section>
     <?php endforeach; ?>
 
     <?php if ($isAdmin): ?>
     <section>
-        <h2><?= h(LOC('metis.settings')) ?></h2>
+        <h2><?= h(LOC('panoptes.settings')) ?></h2>
         <form method="post">
             <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
-            <label><?= h(LOC('metis.limit.user')) ?></label>
+            <label><?= h(LOC('panoptes.limit.user')) ?></label>
             <input type="number" min="0" name="cowork_limit_user" value="<?= (int) $settings['cowork_limit_user'] ?>">
-            <label><?= h(LOC('metis.limit.total')) ?></label>
+            <label><?= h(LOC('panoptes.limit.total')) ?></label>
             <input type="number" min="0" name="cowork_limit_total" value="<?= $settings['cowork_limit_total'] === null ? '' : (int) $settings['cowork_limit_total'] ?>">
-            <label><?= h(LOC('metis.settings.mail_to')) ?></label>
+            <label><?= h(LOC('panoptes.settings.mail_to')) ?></label>
             <input type="email" name="mail_to" value="<?= h($settings['mail_to']) ?>">
-            <label><input type="checkbox" name="mail_enabled" value="1" <?= $settings['mail_enabled'] ? 'checked' : '' ?>> <?= h(LOC('metis.settings.mail_enabled')) ?></label>
-            <p><button type="submit"><?= h(LOC('metis.settings.save')) ?></button></p>
+            <label><input type="checkbox" name="mail_enabled" value="1" <?= $settings['mail_enabled'] ? 'checked' : '' ?>> <?= h(LOC('panoptes.settings.mail_enabled')) ?></label>
+            <p><button type="submit"><?= h(LOC('panoptes.settings.save')) ?></button></p>
         </form>
-        <p class="muted"><?= h(LOC('metis.settings.last_mail', isset($mailState['sent_at']) ? metis_dt((string) $mailState['sent_at']) . ' → ' . (string) ($mailState['to'] ?? '') : '–')) ?></p>
+        <p class="muted"><?= h(LOC('panoptes.settings.last_mail', isset($mailState['sent_at']) ? panoptes_dt((string) $mailState['sent_at']) . ' → ' . (string) ($mailState['to'] ?? '') : '–')) ?></p>
     </section>
     <?php endif; ?>
 </main>

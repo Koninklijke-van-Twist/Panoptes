@@ -1,9 +1,9 @@
 {
     "name": "Copilot-verbruik",
-    "short_name": "Metis",
+    "short_name": "Panoptes",
     "icons": [
         {
-            "src": "metis.svg",
+            "src": "panoptes.svg",
             "sizes": "any",
             "type": "image/svg+xml",
             "purpose": "any"

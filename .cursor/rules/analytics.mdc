@@ -1,5 +1,5 @@
 ---
-description: Vaste SQLite-structuur en HTTP-gebruik voor Metis analytics; nooit afwijken.
+description: Vaste SQLite-structuur en HTTP-gebruik voor Panoptes analytics; nooit afwijken.
 globs: web/analytics/**
 alwaysApply: false
 ---
