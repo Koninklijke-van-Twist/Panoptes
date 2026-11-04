@@ -11,6 +11,9 @@ const PANOPTES_CACHE_TTL = 3600; // bron is ~4 uur oud; 1 uur cache is ruim vold
 const PANOPTES_GRAPH_URL = 'https://graph.microsoft.com/beta/copilot/costManagement/getTenantCreditBalance';
 const PANOPTES_PP_URL = 'https://api.powerplatform.com/licensing/tenantCapacity/currencyReports?includeAllocations=true&includeConsumptions=true&api-version=2024-10-01';
 const PANOPTES_MAIL_SUBJECT = 'Co-Pilot Verbruik';
+const PANOPTES_DELEGATED_SCOPE = 'openid profile offline_access https://graph.microsoft.com/CopilotCostManagement.Read.All';
+const PANOPTES_NOT_LINKED = 'Copilot-account niet gekoppeld of verlopen — opnieuw koppelen';
+const PANOPTES_TOKEN_FILE = 'delegated_token.json';
 
 /**
  * Opslag
@@ -129,6 +132,13 @@ function panoptes_http(string $method, string $url, array $headers = [], ?string
     return ['status' => $status, 'body' => $response === false ? '' : (string) $response, 'error' => $error];
 }
 
+function panoptes_token_endpoint(): string
+{
+    global $panoptesTenantId;
+
+    return 'https://login.microsoftonline.com/' . rawurlencode((string) $panoptesTenantId) . '/oauth2/v2.0/token';
+}
+
 function panoptes_token(string $scope): string
 {
     global $panoptesTenantId, $panoptesClientId, $panoptesClientSecret;
@@ -136,7 +146,7 @@ function panoptes_token(string $scope): string
         throw new RuntimeException('Tenant ID, client ID of client secret ontbreekt in auth.php.');
     }
 
-    $res = panoptes_http('POST', 'https://login.microsoftonline.com/' . rawurlencode((string) $panoptesTenantId) . '/oauth2/v2.0/token',
+    $res = panoptes_http('POST', panoptes_token_endpoint(),
         ['Content-Type: application/x-www-form-urlencoded'],
         http_build_query([
             'grant_type' => 'client_credentials',
@@ -154,16 +164,164 @@ function panoptes_token(string $scope): string
 }
 
 /**
+ * Gedelegeerd Copilot-account (CopilotCostManagement.Read.All is alleen gedelegeerd beschikbaar).
+ * Eenmalige login door een beheerder (authorization code + PKCE); het refresh token staat alleen
+ * in data/delegated_token.json (0600) en wordt bij elke refresh vervangen door het nieuwe.
+ */
+
+class PanoptesNotLinkedException extends RuntimeException
+{
+}
+
+function panoptes_redirect_uri(): string
+{
+    global $panoptesRedirectUri;
+
+    return !empty($panoptesRedirectUri) ? (string) $panoptesRedirectUri : 'https://sleutels.kvt.nl/panoptes/oauth_callback.php';
+}
+
+function panoptes_base64url(string $bytes): string
+{
+    return rtrim(strtr(base64_encode($bytes), '+/', '-_'), '=');
+}
+
+/**
+ * Bouwt de authorize-URL en geeft ['url', 'state', 'verifier'] terug (state + verifier in de sessie bewaren).
+ */
+function panoptes_oauth_start(): array
+{
+    global $panoptesTenantId, $panoptesClientId;
+    $state = panoptes_base64url(random_bytes(24));
+    $verifier = panoptes_base64url(random_bytes(48));
+    $url = 'https://login.microsoftonline.com/' . rawurlencode((string) $panoptesTenantId) . '/oauth2/v2.0/authorize?' . http_build_query([
+        'client_id' => (string) $panoptesClientId,
+        'response_type' => 'code',
+        'redirect_uri' => panoptes_redirect_uri(),
+        'response_mode' => 'query',
+        'scope' => PANOPTES_DELEGATED_SCOPE,
+        'state' => $state,
+        'code_challenge' => panoptes_base64url(hash('sha256', $verifier, true)),
+        'code_challenge_method' => 'S256',
+        'prompt' => 'select_account',
+    ], '', '&', PHP_QUERY_RFC3986);
+
+    return ['url' => $url, 'state' => $state, 'verifier' => $verifier];
+}
+
+function panoptes_delegated_request(array $params): array
+{
+    global $panoptesClientId, $panoptesClientSecret;
+    $res = panoptes_http('POST', panoptes_token_endpoint(), ['Content-Type: application/x-www-form-urlencoded'], http_build_query($params + [
+        'client_id' => (string) $panoptesClientId,
+        'client_secret' => (string) $panoptesClientSecret,
+        'scope' => PANOPTES_DELEGATED_SCOPE,
+    ]));
+    $json = json_decode($res['body'], true);
+
+    return is_array($json) ? $json + ['_status' => $res['status']] : ['_status' => $res['status'], 'error' => 'invalid_response'];
+}
+
+function panoptes_delegated_read(): array
+{
+    return panoptes_read_json(PANOPTES_TOKEN_FILE);
+}
+
+/**
+ * Slaat een tokenantwoord op (alleen server-side, 0600). Behoudt "gekoppeld door/op" bij een refresh.
+ */
+function panoptes_delegated_store(array $json, array $previous = []): void
+{
+    $claims = [];
+    $parts = explode('.', (string) ($json['id_token'] ?? ''));
+    if (count($parts) === 3) {
+        $claims = json_decode((string) base64_decode(strtr($parts[1], '-_', '+/')), true) ?: [];
+    }
+    $data = [
+        'refresh_token' => (string) ($json['refresh_token'] ?? $previous['refresh_token'] ?? ''),
+        'access_token' => (string) ($json['access_token'] ?? ''),
+        'expires_at' => time() + max(0, (int) ($json['expires_in'] ?? 0) - 120),
+        'linked_by' => (string) ($claims['preferred_username'] ?? $claims['name'] ?? $previous['linked_by'] ?? ''),
+        'linked_at' => (string) ($previous['linked_at'] ?? date('c')),
+    ];
+    $path = panoptes_data_dir() . '/' . PANOPTES_TOKEN_FILE;
+    $tmp = $path . '.tmp' . getmypid();
+    $old = umask(0077);
+    file_put_contents($tmp, json_encode($data));
+    umask($old);
+    chmod($tmp, 0600);
+    rename($tmp, $path);
+}
+
+/**
+ * Wisselt de code uit de callback in. Gooit een RuntimeException bij een fout (zonder tokens in de melding).
+ */
+function panoptes_oauth_exchange(string $code, string $verifier): void
+{
+    $json = panoptes_delegated_request([
+        'grant_type' => 'authorization_code',
+        'code' => $code,
+        'redirect_uri' => panoptes_redirect_uri(),
+        'code_verifier' => $verifier,
+    ]);
+    if (empty($json['refresh_token']) || empty($json['access_token'])) {
+        throw new RuntimeException('Koppelen mislukt: ' . strtok((string) ($json['error_description'] ?? $json['error'] ?? 'onbekende fout'), "\r\n"));
+    }
+    panoptes_delegated_store($json);
+}
+
+/**
+ * Geldig gedelegeerd access token; ververst (en roteert het refresh token) indien nodig.
+ */
+function panoptes_delegated_token(): string
+{
+    $stored = panoptes_delegated_read();
+    if (($stored['refresh_token'] ?? '') === '') {
+        throw new PanoptesNotLinkedException(PANOPTES_NOT_LINKED);
+    }
+    if (($stored['access_token'] ?? '') !== '' && (int) ($stored['expires_at'] ?? 0) > time()) {
+        return (string) $stored['access_token'];
+    }
+    $json = panoptes_delegated_request(['grant_type' => 'refresh_token', 'refresh_token' => (string) $stored['refresh_token']]);
+    if (empty($json['access_token'])) {
+        if (($json['error'] ?? '') === 'invalid_grant') {
+            $stored['refresh_token'] = '';
+            $stored['access_token'] = '';
+            panoptes_delegated_store([], $stored);
+            throw new PanoptesNotLinkedException(PANOPTES_NOT_LINKED);
+        }
+        throw new RuntimeException('Copilot-token verversen mislukt (HTTP ' . (int) $json['_status'] . '): ' . strtok((string) ($json['error_description'] ?? $json['error'] ?? ''), "\r\n"));
+    }
+    panoptes_delegated_store($json, $stored);
+
+    return (string) $json['access_token'];
+}
+
+/**
+ * Koppelstatus voor de pagina (zonder tokens).
+ */
+function panoptes_delegated_status(): array
+{
+    $stored = panoptes_delegated_read();
+
+    return [
+        'linked' => ($stored['refresh_token'] ?? '') !== '',
+        'by' => (string) ($stored['linked_by'] ?? ''),
+        'at' => (string) ($stored['linked_at'] ?? ''),
+    ];
+}
+
+/**
  * Haalt een bron op. Resultaat: ['ok' => bool, 'status' => int, 'data' => array|null, 'error' => string, 'fetched_at' => int].
  * Fouten (403, onverwachte vorm) worden als resultaat teruggegeven zodat de pagina ze netjes toont.
  */
-function panoptes_fetch_source(string $url, string $scope): array
+function panoptes_fetch_source(string $url, callable $token): array
 {
-    $result = ['ok' => false, 'status' => 0, 'data' => null, 'error' => '', 'fetched_at' => time()];
+    $result = ['ok' => false, 'status' => 0, 'data' => null, 'error' => '', 'fetched_at' => time(), 'not_linked' => false];
     try {
-        $res = panoptes_http('GET', $url, ['Authorization: Bearer ' . panoptes_token($scope), 'Accept: application/json']);
+        $res = panoptes_http('GET', $url, ['Authorization: Bearer ' . $token(), 'Accept: application/json']);
     } catch (Throwable $e) {
         $result['error'] = $e->getMessage();
+        $result['not_linked'] = $e instanceof PanoptesNotLinkedException;
 
         return $result;
     }
@@ -199,12 +357,13 @@ function panoptes_load(bool $refresh = false): array
         return $cache;
     }
 
-    $copilot = panoptes_fetch_source(PANOPTES_GRAPH_URL, 'https://graph.microsoft.com/.default');
-    $pp = panoptes_fetch_source(PANOPTES_PP_URL, 'https://api.powerplatform.com/.default');
+    $copilot = panoptes_fetch_source(PANOPTES_GRAPH_URL, 'panoptes_delegated_token');
+    $pp = panoptes_fetch_source(PANOPTES_PP_URL, static fn (): string => panoptes_token('https://api.powerplatform.com/.default'));
     // Bij een fout de laatste goede data bewaren, met de nieuwe foutmelding erbij.
     foreach (['copilot' => $copilot, 'powerplatform' => $pp] as $key => $source) {
         if (!$source['ok'] && !empty($cache[$key]['ok'])) {
             $cache[$key]['error'] = $source['error'];
+            $cache[$key]['not_linked'] = $source['not_linked'];
             $cache[$key]['stale'] = true;
             continue;
         }
@@ -452,7 +611,7 @@ function panoptes_mail_tables(array $summary, ?array $previous, array $settings)
 /**
  * Verstuurt de weekmail als die vandaag (vrijdag) nog niet ging. Geeft een korte status terug.
  */
-function panoptes_maybe_send_weekly(array $summary): string
+function panoptes_maybe_send_weekly(array $summary, bool $copilotNotLinked = false): string
 {
     $date = panoptes_today();
     $settings = panoptes_settings();
@@ -463,7 +622,7 @@ function panoptes_maybe_send_weekly(array $summary): string
     if (!panoptes_mail_due($date, $state, panoptes_hour())) {
         return 'niet nodig';
     }
-    if ($summary['copilot'] === [] && $summary['powerplatform'] === []) {
+    if ($summary['copilot'] === [] && $summary['powerplatform'] === [] && !$copilotNotLinked) {
         return 'geen data';
     }
 
@@ -477,6 +636,10 @@ function panoptes_maybe_send_weekly(array $summary): string
             return 'niet nodig';
         }
         $body = panoptes_mail_tables($summary, panoptes_snapshot_week_before(panoptes_history(), $date), $settings);
+        if ($copilotNotLinked) {
+            $body['plain'] = PANOPTES_NOT_LINKED . ' (https://sleutels.kvt.nl/panoptes/)' . "\n\n" . $body['plain'];
+            $body['html'] = '<p style="color:#b42318"><b>' . PANOPTES_NOT_LINKED . '</b> (<a href="https://sleutels.kvt.nl/panoptes/">sleutels.kvt.nl/panoptes</a>)</p>' . $body['html'];
+        }
         if (!panoptes_mail_send($settings['mail_to'], PANOPTES_MAIL_SUBJECT, $body['plain'], $body['html'])) {
             return 'mislukt';
         }

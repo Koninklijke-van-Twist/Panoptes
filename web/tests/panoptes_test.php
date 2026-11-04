@@ -67,6 +67,64 @@ check(count($sent) === 1 && $sent[0] === ['ict@kvt.nl', 'Co-Pilot Verbruik'], 'p
 $body = panoptes_mail_tables($summary, panoptes_snapshot_week_before(panoptes_history(), $friday), panoptes_settings());
 check(str_contains($body['plain'], '+15'), 'verschil t.o.v. vorige week');
 
+// Gedelegeerd token: niet gekoppeld, opslag 0600, rotatie, invalid_grant
+$panoptesTenantId = 'tenant';
+$panoptesClientId = 'client';
+$panoptesClientSecret = 'secret';
+$calls = [];
+$nextToken = [];
+$GLOBALS['PANOPTES_HTTP'] = function (string $method, string $url, array $headers, ?string $body) use (&$calls, &$nextToken): array {
+    parse_str((string) $body, $form);
+    $calls[] = $form;
+    if (str_contains($url, '/oauth2/v2.0/token')) {
+        return ['status' => isset($nextToken['error']) ? 400 : 200, 'body' => json_encode($nextToken), 'error' => ''];
+    }
+    return ['status' => 200, 'body' => '{"billingMethodBalances":[]}', 'error' => ''];
+};
+$fetched = panoptes_fetch_source(PANOPTES_GRAPH_URL, 'panoptes_delegated_token');
+check(!$fetched['ok'] && $fetched['not_linked'] && $fetched['error'] === PANOPTES_NOT_LINKED, 'niet gekoppeld');
+
+$idToken = 'x.' . rtrim(strtr(base64_encode(json_encode(['preferred_username' => 'admin@kvt.nl'])), '+/', '-_'), '=') . '.y';
+$nextToken = ['access_token' => 'AT1', 'refresh_token' => 'RT1', 'expires_in' => 3600, 'id_token' => $idToken];
+panoptes_oauth_exchange('code123', 'verifier123');
+check($calls[count($calls) - 1]['grant_type'] === 'authorization_code' && $calls[count($calls) - 1]['code_verifier'] === 'verifier123', 'code + PKCE verifier');
+$tokenPath = $GLOBALS['PANOPTES_DATA_DIR'] . '/' . PANOPTES_TOKEN_FILE;
+check((fileperms($tokenPath) & 0777) === 0600, 'tokenbestand 0600');
+check(panoptes_delegated_status()['linked'] && panoptes_delegated_status()['by'] === 'admin@kvt.nl', 'gekoppeld door');
+check(!isset(panoptes_delegated_status()['refresh_token']), 'status bevat geen token');
+$count = count($calls);
+check(panoptes_delegated_token() === 'AT1' && count($calls) === $count, 'geldig access token uit cache');
+
+$stored = panoptes_delegated_read();
+$stored['expires_at'] = time() - 1;
+panoptes_delegated_store(['access_token' => 'AT1', 'refresh_token' => 'RT1', 'expires_in' => 0], $stored);
+$nextToken = ['access_token' => 'AT2', 'refresh_token' => 'RT2', 'expires_in' => 3600];
+check(panoptes_delegated_token() === 'AT2', 'ververst');
+check($calls[count($calls) - 1]['refresh_token'] === 'RT1', 'oude refresh token gebruikt');
+check(panoptes_delegated_read()['refresh_token'] === 'RT2' && panoptes_delegated_read()['linked_by'] === 'admin@kvt.nl', 'refresh token geroteerd, koppelinfo behouden');
+
+$stored = panoptes_delegated_read();
+$stored['expires_at'] = time() - 1;
+panoptes_delegated_store(['access_token' => '', 'refresh_token' => 'RT2'], $stored);
+$nextToken = ['error' => 'invalid_grant', 'error_description' => 'AADSTS70043: expired'];
+try {
+    panoptes_delegated_token();
+    check(false, 'invalid_grant moet falen');
+} catch (PanoptesNotLinkedException $e) {
+    check($e->getMessage() === PANOPTES_NOT_LINKED, 'invalid_grant -> niet gekoppeld');
+}
+check(!panoptes_delegated_status()['linked'], 'na invalid_grant ontkoppeld');
+
+// Weekmail vermeldt niet-gekoppeld i.p.v. te falen
+$sent = [];
+$GLOBALS['PANOPTES_MAIL_SENDER'] = function (string $to, string $subject, string $plain) use (&$sent): bool {
+    $sent[] = $plain;
+    return true;
+};
+$GLOBALS['PANOPTES_TODAY'] = '2026-11-13';
+check(str_starts_with(panoptes_maybe_send_weekly(['copilot' => [], 'powerplatform' => []], true), 'verzonden'), 'mail ondanks niet gekoppeld');
+check(str_contains($sent[0], PANOPTES_NOT_LINKED), 'mail noemt niet gekoppeld');
+
 foreach (array_diff(scandir($GLOBALS['PANOPTES_DATA_DIR']) ?: [], ['.', '..']) as $file) {
     unlink($GLOBALS['PANOPTES_DATA_DIR'] . '/' . $file);
 }

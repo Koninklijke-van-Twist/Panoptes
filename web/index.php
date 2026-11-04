@@ -14,6 +14,8 @@ if (empty($_SESSION['panoptes_csrf'])) {
     $_SESSION['panoptes_csrf'] = bin2hex(random_bytes(16));
 }
 $csrf = (string) $_SESSION['panoptes_csrf'];
+$linkResult = $_SESSION['panoptes_link_result'] ?? null;
+unset($_SESSION['panoptes_link_result']);
 $userEmail = strtolower(trim((string) ($_SESSION['user']['email'] ?? '')));
 
 require_once __DIR__ . '/localization.php';
@@ -108,6 +110,10 @@ $history = panoptes_history();
 $weeks = panoptes_history_by_period($history, 'o-\WW');
 $months = panoptes_history_by_period($history, 'Y-m');
 $mailState = panoptes_read_json('mail_state.json');
+$link = panoptes_delegated_status();
+if ($linkResult !== null) {
+    $notice = $linkResult === 'ok' ? LOC('panoptes.link.done') : LOC('panoptes.link.failed') . ': ' . $linkResult;
+}
 ?><!DOCTYPE html>
 <html lang="<?= h(getHtmlLang()) ?>">
 <head>
@@ -155,7 +161,15 @@ $mailState = panoptes_read_json('mail_state.json');
 
     <section>
         <h2><?= h(LOC('panoptes.copilot')) ?></h2>
-        <?php panoptes_render_error($loaded['copilot'] ?? []); ?>
+        <?php if (!empty($loaded['copilot']['not_linked']) || !$link['linked']): ?>
+            <p class="error"><?= h(PANOPTES_NOT_LINKED) ?></p>
+        <?php else: panoptes_render_error($loaded['copilot'] ?? []); endif; ?>
+        <?php if ($isAdmin): ?>
+            <p class="muted">
+                <?= $link['linked'] ? h(LOC('panoptes.link.by', $link['by'] !== '' ? $link['by'] : '?', panoptes_dt($link['at']))) . ' · ' : '' ?>
+                <a class="btn" href="oauth_callback.php?start=1"><?= h(LOC('panoptes.link.button')) ?></a>
+            </p>
+        <?php endif; ?>
         <?php if ($copilot['recognized']): ?>
             <?php if ($copilot['rows'] === []): ?><p class="muted"><?= h(LOC('panoptes.empty')) ?></p><?php else: ?>
             <table>

@@ -15,18 +15,25 @@ $panoptesAdmins = [
     'tfalken@kvt.nl',
 ];
 
-// App-registratie in Entra (client credentials, geen ingelogd account nodig).
+// App-registratie in Entra (confidential client).
 // Entra admin center > Identiteit > Toepassingen > App-registraties > [jouw app]:
 // - Overzicht: "Map-id (tenant-id)" en "Toepassings-id (client-id)".
 // - Certificaten en geheimen > Nieuw clientgeheim: neem de "Waarde" (niet de geheim-id).
-// - API-machtigingen > Microsoft Graph > Toepassingsmachtigingen:
-//   CopilotCostManagement.Read.All, daarna "Beheerderstoestemming verlenen".
-//   Gedelegeerde machtigingen zijn voor Panoptes niet nodig.
+// - API-machtigingen > Microsoft Graph > Gedelegeerde machtigingen:
+//   CopilotCostManagement.Read.All (+ openid, profile, offline_access), daarna "Beheerderstoestemming verlenen".
+//   Een toepassingsmachtiging is niet nodig (CopilotCostManagement.Read.All bestaat alleen gedelegeerd).
+// - Verificatie > Platform toevoegen > Web: redirect-URI https://sleutels.kvt.nl/panoptes/oauth_callback.php
+//   (of de waarde van $panoptesRedirectUri hieronder).
+// - Daarna eenmalig op de pagina als beheerder "Koppel Copilot-account" klikken en inloggen met een account
+//   dat Copilot-kostenbeheer mag lezen (welke Entra-rol: zie de Microsoft-docs van Copilot cost management).
+//   Het refresh token staat daarna alleen in web/data/ (0600) en wordt automatisch vernieuwd.
 // - Power Platform-beheercentrum > Instellingen > Beheerinstellingen > Power Platform API:
 //   registreer dezelfde client-id als beheer-app (of: pac admin application register --application-id <client-id>).
+//   Power Platform blijft app-only (client credentials).
 $panoptesTenantId = 'TENANT_ID';         // Map-id (tenant-id)
 $panoptesClientId = 'CLIENT_ID';         // Toepassings-id (client-id)
 $panoptesClientSecret = 'CLIENT_SECRET'; // Waarde van het clientgeheim
+// $panoptesRedirectUri = 'https://sleutels.kvt.nl/panoptes/oauth_callback.php'; // optioneel, dit is de standaard
 
 // Mail (zelfde als Elpis/Ponos). Zonder smtp wordt PHP mail() gebruikt.
 $reportMail = [
