@@ -20,4 +20,4 @@ panoptes_store_snapshot(panoptes_today(), $summary);
 
 echo "Panoptes hourly OK\n";
 echo 'hour=' . panoptes_hour() . "\n";
-echo 'mail=' . panoptes_maybe_send_weekly($summary) . "\n";
+echo 'mail=' . panoptes_maybe_send_weekly($summary, !empty($loaded['copilot']['not_linked'])) . "\n";

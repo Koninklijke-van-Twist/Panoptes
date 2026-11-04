@@ -9,6 +9,7 @@ Productie: https://sleutels.kvt.nl/panoptes
 - `web/index.php` — pagina (Copilot-credits, Cowork-limieten, AI Builder/Power Platform-credits, trend, instellingen)
 - `web/panoptes_lib.php` — tokens (client credentials), API-calls, parsing, cache, snapshots, weekmail
 - `web/nightly.php` — ververst de cache en slaat de dagsnapshot op (`data/history.json`)
+- `web/oauth_callback.php` — eenmalig koppelen van het Copilot-account (beheerder, authorization code + PKCE)
 - `web/hourly.php` — ververst de cache als die ouder is dan 1 uur; verstuurt vrijdag vanaf 07:00 eenmalig de weekmail
 - `web/localization.php` — UI-teksten (nl/en)
 - `web/auth_TEMPLATE.php` — kopieer naar `web/auth.php` op de server (niet in git)
@@ -18,7 +19,7 @@ nightly.php en hourly.php worden door het bestaande serverscript via GET vanaf l
 
 ## Bronnen
 
-1. `GET https://graph.microsoft.com/beta/copilot/costManagement/getTenantCreditBalance` (scope `https://graph.microsoft.com/.default`, application permission `CopilotCostManagement.Read.All`).
+1. `GET https://graph.microsoft.com/beta/copilot/costManagement/getTenantCreditBalance` met een **gedelegeerd** token (`CopilotCostManagement.Read.All` is alleen gedelegeerd beschikbaar, + admin consent). Een beheerder klikt eenmalig op "Koppel Copilot-account" (scopes `openid profile offline_access https://graph.microsoft.com/CopilotCostManagement.Read.All`, redirect-URI `https://sleutels.kvt.nl/panoptes/oauth_callback.php`, als Web-platform in de app-registratie). Het refresh token staat alleen in `data/delegated_token.json` (0600), wordt nooit getoond of gelogd en wordt bij elke refresh vervangen. Bij geen/verlopen token toont de pagina "Copilot-account niet gekoppeld of verlopen — opnieuw koppelen" en meldt de weekmail dat. Het inloggende account heeft een Entra-rol nodig die Copilot-kostenbeheer mag lezen; controleer in de Microsoft-docs welke.
 2. `GET https://api.powerplatform.com/licensing/tenantCapacity/currencyReports?includeAllocations=true&includeConsumptions=true&api-version=2024-10-01` (scope `https://api.powerplatform.com/.default`, app geregistreerd als Power Platform admin app).
 
 De veldnamen zijn nog niet geverifieerd tegen een echt antwoord; bij een onverwachte vorm toont de pagina de ruwe JSON. Cowork-limieten zijn alleen delegated op te vragen en staan daarom als instelling in de app (standaard 2000 per gebruiker, totaal leeg).

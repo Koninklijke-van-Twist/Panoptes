@@ -21,4 +21,4 @@ echo 'Panoptes nightly ' . (($loaded['copilot']['ok'] ?? false) && ($loaded['pow
 echo 'copilot=' . (($loaded['copilot']['ok'] ?? false) ? 'ok' : (string) ($loaded['copilot']['error'] ?? '')) . "\n";
 echo 'powerplatform=' . (($loaded['powerplatform']['ok'] ?? false) ? 'ok' : (string) ($loaded['powerplatform']['error'] ?? '')) . "\n";
 echo 'snapshot=' . panoptes_today() . "\n";
-echo 'mail=' . panoptes_maybe_send_weekly($summary) . "\n";
+echo 'mail=' . panoptes_maybe_send_weekly($summary, !empty($loaded['copilot']['not_linked'])) . "\n";
