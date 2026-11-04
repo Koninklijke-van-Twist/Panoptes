@@ -183,15 +183,6 @@ if ($linkResult !== null) {
     </section>
 
     <section>
-        <h2><?= h(LOC('panoptes.cowork')) ?></h2>
-        <table>
-            <tr><td><?= h(LOC('panoptes.limit.user')) ?></td><td class="num"><?= panoptes_fmt((float) $settings['cowork_limit_user']) ?></td></tr>
-            <tr><td><?= h(LOC('panoptes.limit.total')) ?></td><td class="num"><?= $settings['cowork_limit_total'] === null ? h(LOC('panoptes.limit.unset')) : panoptes_fmt((float) $settings['cowork_limit_total']) ?></td></tr>
-        </table>
-        <p class="muted"><?= h(LOC('panoptes.limit.note')) ?></p>
-    </section>
-
-    <section>
         <h2><?= h(LOC('panoptes.pp')) ?></h2>
         <?php panoptes_render_error($loaded['powerplatform'] ?? []); ?>
         <?php if ($pp['recognized']): ?>
@@ -223,10 +214,6 @@ if ($linkResult !== null) {
         <h2><?= h(LOC('panoptes.settings')) ?></h2>
         <form method="post">
             <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
-            <label><?= h(LOC('panoptes.limit.user')) ?></label>
-            <input type="number" min="0" name="cowork_limit_user" value="<?= (int) $settings['cowork_limit_user'] ?>">
-            <label><?= h(LOC('panoptes.limit.total')) ?></label>
-            <input type="number" min="0" name="cowork_limit_total" value="<?= $settings['cowork_limit_total'] === null ? '' : (int) $settings['cowork_limit_total'] ?>">
             <label><?= h(LOC('panoptes.settings.mail_to')) ?></label>
             <input type="email" name="mail_to" value="<?= h($settings['mail_to']) ?>">
             <label><input type="checkbox" name="mail_enabled" value="1" <?= $settings['mail_enabled'] ? 'checked' : '' ?>> <?= h(LOC('panoptes.settings.mail_enabled')) ?></label>

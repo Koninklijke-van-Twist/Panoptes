@@ -6,7 +6,7 @@ Productie: https://sleutels.kvt.nl/panoptes
 
 ## Structuur
 
-- `web/index.php` — pagina (Copilot-credits, Cowork-limieten, AI Builder/Power Platform-credits, trend, instellingen)
+- `web/index.php` — pagina (Copilot-credits, AI Builder/Power Platform-credits, trend, instellingen)
 - `web/panoptes_lib.php` — tokens (client credentials), API-calls, parsing, cache, snapshots, weekmail
 - `web/nightly.php` — ververst de cache en slaat de dagsnapshot op (`data/history.json`)
 - `web/oauth_callback.php` — eenmalig koppelen van het Copilot-account (beheerder, authorization code + PKCE)
@@ -20,7 +20,7 @@ nightly.php en hourly.php worden door het bestaande serverscript via GET vanaf l
 ## Bronnen
 
 1. `GET https://graph.microsoft.com/beta/copilot/costManagement/getTenantCreditBalance` met een **gedelegeerd** token (`CopilotCostManagement.Read.All` is alleen gedelegeerd beschikbaar, + admin consent). Een beheerder klikt eenmalig op "Koppel Copilot-account" (scopes `openid profile offline_access https://graph.microsoft.com/CopilotCostManagement.Read.All`, redirect-URI `https://sleutels.kvt.nl/panoptes/oauth_callback.php`, als Web-platform in de app-registratie). Het refresh token staat alleen in `data/delegated_token.json` (0600), wordt nooit getoond of gelogd en wordt bij elke refresh vervangen. Bij geen/verlopen token toont de pagina "Copilot-account niet gekoppeld of verlopen — opnieuw koppelen" en meldt de weekmail dat. Het inloggende account heeft een Entra-rol nodig die Copilot-kostenbeheer mag lezen; controleer in de Microsoft-docs welke.
-2. `GET https://api.powerplatform.com/licensing/tenantCapacity/currencyReports?includeAllocations=true&includeConsumptions=true&api-version=2024-10-01` (scope `https://api.powerplatform.com/.default`, app geregistreerd als Power Platform admin app).
+2. `GET https://api.powerplatform.com/licensing/tenantCapacity/currencyReports?includeAllocations=true&includeConsumptions=true&api-version=2024-10-01` Met een gekoppeld account **gedelegeerd**: hetzelfde refresh token wordt ingewisseld voor scope `https://api.powerplatform.com/.default` (bij het inloggen alleen Graph-scopes, resources mogen niet gemengd worden). Daarvoor is in de app-registratie waarschijnlijk de gedelegeerde machtiging "Power Platform API" > `Licensing.Allocations.Read` + beheerderstoestemming nodig. De docs van currencyReports noemen geen specifieke machtiging, dus controleer dit in de [permission reference](https://learn.microsoft.com/power-platform/admin/programmability-permission-reference). Zonder gekoppeld account valt hij terug op app-only (app geregistreerd als Power Platform admin app). Foutteksten uit het API-antwoord worden getoond (zonder tokens).
 
 De veldnamen zijn nog niet geverifieerd tegen een echt antwoord; bij een onverwachte vorm toont de pagina de ruwe JSON. Cowork-limieten zijn alleen delegated op te vragen en staan daarom als instelling in de app (standaard 2000 per gebruiker, totaal leeg).
 

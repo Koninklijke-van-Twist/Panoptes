@@ -10,7 +10,7 @@ $allowedUsers = [
     'tfalken@kvt.nl',
 ];
 
-// Wie mag de instellingen (Cowork-limieten, mailadres) aanpassen. Weglaten = iedereen in $allowedUsers.
+// Wie mag de instellingen (weekmail) aanpassen. Weglaten = iedereen in $allowedUsers.
 $panoptesAdmins = [
     'tfalken@kvt.nl',
 ];
@@ -29,7 +29,11 @@ $panoptesAdmins = [
 //   Het refresh token staat daarna alleen in web/data/ (0600) en wordt automatisch vernieuwd.
 // - Power Platform-beheercentrum > Instellingen > Beheerinstellingen > Power Platform API:
 //   registreer dezelfde client-id als beheer-app (of: pac admin application register --application-id <client-id>).
-//   Power Platform blijft app-only (client credentials).
+//   Alleen nodig als fallback zonder gekoppeld account: met een gekoppeld account gaat Power Platform gedelegeerd.
+// - API-machtigingen > API's die mijn organisatie gebruikt > "Power Platform API" > Gedelegeerde machtigingen:
+//   waarschijnlijk Licensing.Allocations.Read (currencyReports noemt in de docs geen specifieke machtiging, controleer),
+//   daarna beheerderstoestemming verlenen en opnieuw "Koppel Copilot-account".
+//   Zie https://learn.microsoft.com/power-platform/admin/programmability-permission-reference
 $panoptesTenantId = 'TENANT_ID';         // Map-id (tenant-id)
 $panoptesClientId = 'CLIENT_ID';         // Toepassings-id (client-id)
 $panoptesClientSecret = 'CLIENT_SECRET'; // Waarde van het clientgeheim
