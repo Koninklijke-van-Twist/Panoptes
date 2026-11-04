@@ -64,7 +64,7 @@ $GLOBALS['PANOPTES_HOUR'] = 8;
 check(panoptes_maybe_send_weekly($summary) === 'verzonden naar ict@kvt.nl', 'eerste run verstuurt');
 check(panoptes_maybe_send_weekly($summary) === 'niet nodig', 'tweede run niet');
 check(count($sent) === 1 && $sent[0] === ['ict@kvt.nl', 'Co-Pilot Verbruik'], 'precies 1 mail met juist onderwerp');
-$body = panoptes_mail_tables($summary, panoptes_snapshot_week_before(panoptes_history(), $friday), panoptes_settings());
+$body = panoptes_mail_tables($summary, panoptes_snapshot_week_before(panoptes_history(), $friday));
 check(str_contains($body['plain'], '+15'), 'verschil t.o.v. vorige week');
 
 // Gedelegeerd token: niet gekoppeld, opslag 0600, rotatie, invalid_grant
@@ -102,6 +102,33 @@ $nextToken = ['access_token' => 'AT2', 'refresh_token' => 'RT2', 'expires_in' =>
 check(panoptes_delegated_token() === 'AT2', 'ververst');
 check($calls[count($calls) - 1]['refresh_token'] === 'RT1', 'oude refresh token gebruikt');
 check(panoptes_delegated_read()['refresh_token'] === 'RT2' && panoptes_delegated_read()['linked_by'] === 'admin@kvt.nl', 'refresh token geroteerd, koppelinfo behouden');
+
+// Power Platform: zelfde refresh token ingewisseld voor andere resource
+$nextToken = ['access_token' => 'PP1', 'refresh_token' => 'RT3', 'expires_in' => 3600];
+check(panoptes_delegated_pp_token() === 'PP1', 'PP-token via refresh token');
+check($calls[count($calls) - 1]['scope'] === PANOPTES_PP_SCOPE . ' offline_access' && $calls[count($calls) - 1]['refresh_token'] === 'RT2', 'PP-scope en refresh token');
+check(panoptes_delegated_read()['refresh_token'] === 'RT3' && panoptes_delegated_read()['access_token'] === 'AT2', 'PP roteert refresh token, Graph-token blijft');
+$count = count($calls);
+check(panoptes_delegated_pp_token() === 'PP1' && count($calls) === $count, 'PP-token uit cache');
+$stored = panoptes_delegated_read();
+$stored['pp_expires_at'] = time() - 1;
+panoptes_delegated_write($stored);
+$nextToken = ['error' => 'invalid_grant', 'error_description' => "AADSTS65001: consent\r\nTrace"];
+try {
+    panoptes_delegated_pp_token();
+    check(false, 'PP zonder consent moet falen');
+} catch (RuntimeException $e) {
+    check(!($e instanceof PanoptesNotLinkedException) && str_contains($e->getMessage(), 'Power Platform API') && !str_contains($e->getMessage(), 'RT3'), 'PP consent-melding');
+}
+check(panoptes_delegated_status()['linked'], 'Graph-koppeling blijft na PP-consentfout');
+$saved = $GLOBALS['PANOPTES_HTTP'];
+$GLOBALS['PANOPTES_HTTP'] = fn () => ['status' => 403, 'body' => '{"error":{"code":"Forbidden","message":"User lacks Licensing permission"}}', 'error' => ''];
+$fetched = panoptes_fetch_source(PANOPTES_PP_URL, fn () => 'x');
+check(str_contains($fetched['error'], 'User lacks Licensing permission'), 'API-fouttekst getoond');
+$GLOBALS['PANOPTES_HTTP'] = $saved;
+$stored = panoptes_delegated_read();
+$stored['refresh_token'] = 'RT2';
+panoptes_delegated_write($stored);
 
 $stored = panoptes_delegated_read();
 $stored['expires_at'] = time() - 1;

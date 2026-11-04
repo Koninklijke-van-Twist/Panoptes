@@ -9,6 +9,7 @@
 
 const PANOPTES_CACHE_TTL = 3600; // bron is ~4 uur oud; 1 uur cache is ruim voldoende
 const PANOPTES_GRAPH_URL = 'https://graph.microsoft.com/beta/copilot/costManagement/getTenantCreditBalance';
+const PANOPTES_PP_SCOPE = 'https://api.powerplatform.com/.default';
 const PANOPTES_PP_URL = 'https://api.powerplatform.com/licensing/tenantCapacity/currencyReports?includeAllocations=true&includeConsumptions=true&api-version=2024-10-01';
 const PANOPTES_MAIL_SUBJECT = 'Co-Pilot Verbruik';
 const PANOPTES_DELEGATED_SCOPE = 'openid profile offline_access https://graph.microsoft.com/CopilotCostManagement.Read.All';
@@ -67,11 +68,8 @@ function panoptes_settings(): array
 {
     $raw = panoptes_read_json('settings.json');
     $email = strtolower(trim((string) ($raw['mail_to'] ?? '')));
-    $total = $raw['cowork_limit_total'] ?? null;
 
     return [
-        'cowork_limit_user' => max(0, (int) ($raw['cowork_limit_user'] ?? 2000)),
-        'cowork_limit_total' => ($total === null || $total === '') ? null : max(0, (int) $total),
         'mail_to' => filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : 'ict@kvt.nl',
         'mail_enabled' => array_key_exists('mail_enabled', $raw) ? (bool) $raw['mail_enabled'] : true,
     ];
@@ -79,10 +77,7 @@ function panoptes_settings(): array
 
 function panoptes_save_settings(array $input): array
 {
-    $total = trim((string) ($input['cowork_limit_total'] ?? ''));
     panoptes_write_json('settings.json', [
-        'cowork_limit_user' => (int) ($input['cowork_limit_user'] ?? 2000),
-        'cowork_limit_total' => $total === '' ? null : (int) $total,
         'mail_to' => (string) ($input['mail_to'] ?? ''),
         'mail_enabled' => !empty($input['mail_enabled']),
     ]);
@@ -208,13 +203,13 @@ function panoptes_oauth_start(): array
     return ['url' => $url, 'state' => $state, 'verifier' => $verifier];
 }
 
-function panoptes_delegated_request(array $params): array
+function panoptes_delegated_request(array $params, string $scope = PANOPTES_DELEGATED_SCOPE): array
 {
     global $panoptesClientId, $panoptesClientSecret;
     $res = panoptes_http('POST', panoptes_token_endpoint(), ['Content-Type: application/x-www-form-urlencoded'], http_build_query($params + [
         'client_id' => (string) $panoptesClientId,
         'client_secret' => (string) $panoptesClientSecret,
-        'scope' => PANOPTES_DELEGATED_SCOPE,
+        'scope' => $scope,
     ]));
     $json = json_decode($res['body'], true);
 
@@ -242,7 +237,14 @@ function panoptes_delegated_store(array $json, array $previous = []): void
         'expires_at' => time() + max(0, (int) ($json['expires_in'] ?? 0) - 120),
         'linked_by' => (string) ($claims['preferred_username'] ?? $claims['name'] ?? $previous['linked_by'] ?? ''),
         'linked_at' => (string) ($previous['linked_at'] ?? date('c')),
+        'pp_access_token' => (string) ($previous['pp_access_token'] ?? ''),
+        'pp_expires_at' => (int) ($previous['pp_expires_at'] ?? 0),
     ];
+    panoptes_delegated_write($data);
+}
+
+function panoptes_delegated_write(array $data): void
+{
     $path = panoptes_data_dir() . '/' . PANOPTES_TOKEN_FILE;
     $tmp = $path . '.tmp' . getmypid();
     $old = umask(0077);
@@ -297,6 +299,42 @@ function panoptes_delegated_token(): string
 }
 
 /**
+ * Gedelegeerd token voor de Power Platform API: hetzelfde refresh token wordt (v2-endpoint) ingewisseld
+ * voor de resource https://api.powerplatform.com. Bij inloggen vragen we alleen Graph-scopes
+ * (resources mogen niet gemengd worden in één authorize-request).
+ */
+function panoptes_delegated_pp_token(): string
+{
+    $stored = panoptes_delegated_read();
+    if (($stored['refresh_token'] ?? '') === '') {
+        throw new PanoptesNotLinkedException(PANOPTES_NOT_LINKED);
+    }
+    if (($stored['pp_access_token'] ?? '') !== '' && (int) ($stored['pp_expires_at'] ?? 0) > time()) {
+        return (string) $stored['pp_access_token'];
+    }
+    $json = panoptes_delegated_request(
+        ['grant_type' => 'refresh_token', 'refresh_token' => (string) $stored['refresh_token']],
+        PANOPTES_PP_SCOPE . ' offline_access'
+    );
+    if (empty($json['access_token'])) {
+        $error = (string) ($json['error'] ?? '');
+        $detail = strtok((string) ($json['error_description'] ?? $error), "\r\n");
+        if (in_array($error, ['invalid_grant', 'consent_required', 'interaction_required'], true)) {
+            throw new RuntimeException('Geen toestemming voor de Power Platform API met het gekoppelde account. Voeg in de app-registratie de gedelegeerde Power Platform API-machtiging toe, verleen beheerderstoestemming en koppel opnieuw. (' . $detail . ')');
+        }
+        throw new RuntimeException('Power Platform-token ophalen mislukt (HTTP ' . (int) $json['_status'] . '): ' . $detail);
+    }
+    if (!empty($json['refresh_token'])) {
+        $stored['refresh_token'] = (string) $json['refresh_token'];
+    }
+    $stored['pp_access_token'] = (string) $json['access_token'];
+    $stored['pp_expires_at'] = time() + max(0, (int) ($json['expires_in'] ?? 0) - 120);
+    panoptes_delegated_write($stored);
+
+    return (string) $json['access_token'];
+}
+
+/**
  * Koppelstatus voor de pagina (zonder tokens).
  */
 function panoptes_delegated_status(): array
@@ -330,7 +368,10 @@ function panoptes_fetch_source(string $url, callable $token): array
     $json = json_decode($res['body'], true);
     $result['data'] = is_array($json) ? $json : null;
     if ($res['status'] < 200 || $res['status'] >= 300) {
-        $msg = is_array($json) ? (string) ($json['error']['message'] ?? $json['message'] ?? '') : '';
+        $msg = is_array($json) ? (string) ($json['error']['message'] ?? $json['message'] ?? $json['error']['code'] ?? '') : '';
+        if ($msg === '' && trim((string) $res['body']) !== '') {
+            $msg = mb_substr(trim(strip_tags((string) $res['body'])), 0, 300);
+        }
         $hint = $res['status'] === 403 ? ' (ontbrekende toestemming/admin consent?)' : '';
         $result['error'] = 'HTTP ' . $res['status'] . $hint . ($msg !== '' ? ': ' . $msg : ($res['error'] !== '' ? ': ' . $res['error'] : ''));
 
@@ -358,7 +399,10 @@ function panoptes_load(bool $refresh = false): array
     }
 
     $copilot = panoptes_fetch_source(PANOPTES_GRAPH_URL, 'panoptes_delegated_token');
-    $pp = panoptes_fetch_source(PANOPTES_PP_URL, static fn (): string => panoptes_token('https://api.powerplatform.com/.default'));
+    // Power Platform: gedelegeerd als het account gekoppeld is, anders app-only (vereist PPAC-registratie).
+    $pp = panoptes_fetch_source(PANOPTES_PP_URL, panoptes_delegated_status()['linked']
+        ? 'panoptes_delegated_pp_token'
+        : static fn (): string => panoptes_token(PANOPTES_PP_SCOPE));
     // Bij een fout de laatste goede data bewaren, met de nieuwe foutmelding erbij.
     foreach (['copilot' => $copilot, 'powerplatform' => $pp] as $key => $source) {
         if (!$source['ok'] && !empty($cache[$key]['ok'])) {
@@ -568,7 +612,7 @@ function panoptes_delta(?float $now, ?float $before): string
     return ($diff > 0 ? '+' : '') . number_format($diff, 0, ',', '.');
 }
 
-function panoptes_mail_tables(array $summary, ?array $previous, array $settings): array
+function panoptes_mail_tables(array $summary, ?array $previous): array
 {
     $sections = [
         'copilot' => ['Copilot-credits', ['purchased' => 'Gekocht', 'consumed' => 'Verbruikt', 'remaining' => 'Resterend']],
@@ -600,10 +644,8 @@ function panoptes_mail_tables(array $summary, ?array $previous, array $settings)
         }
         $html .= '</table>';
     }
-    $limits = 'Cowork-limiet per gebruiker: ' . panoptes_fmt((float) $settings['cowork_limit_user'])
-        . ', totaal per maand: ' . ($settings['cowork_limit_total'] === null ? 'niet ingesteld' : panoptes_fmt((float) $settings['cowork_limit_total']));
-    $plain .= "\n" . $limits . "\n\nhttps://sleutels.kvt.nl/panoptes/\n";
-    $html .= '<p>' . $limits . '</p><p><a href="https://sleutels.kvt.nl/panoptes/">sleutels.kvt.nl/panoptes</a></p>';
+    $plain .= "\nhttps://sleutels.kvt.nl/panoptes/\n";
+    $html .= '<p><a href="https://sleutels.kvt.nl/panoptes/">sleutels.kvt.nl/panoptes</a></p>';
 
     return ['plain' => 'Copilot- en AI-creditverbruik KVT' . "\n" . $plain, 'html' => '<h2>Copilot- en AI-creditverbruik KVT</h2>' . $html];
 }
@@ -635,7 +677,7 @@ function panoptes_maybe_send_weekly(array $summary, bool $copilotNotLinked = fal
         if (!panoptes_mail_due($date, $state, panoptes_hour())) {
             return 'niet nodig';
         }
-        $body = panoptes_mail_tables($summary, panoptes_snapshot_week_before(panoptes_history(), $date), $settings);
+        $body = panoptes_mail_tables($summary, panoptes_snapshot_week_before(panoptes_history(), $date));
         if ($copilotNotLinked) {
             $body['plain'] = PANOPTES_NOT_LINKED . ' (https://sleutels.kvt.nl/panoptes/)' . "\n\n" . $body['plain'];
             $body['html'] = '<p style="color:#b42318"><b>' . PANOPTES_NOT_LINKED . '</b> (<a href="https://sleutels.kvt.nl/panoptes/">sleutels.kvt.nl/panoptes</a>)</p>' . $body['html'];
