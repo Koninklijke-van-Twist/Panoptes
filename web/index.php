@@ -70,6 +70,7 @@ function panoptes_render_trend(array $periods, string $key): void
         }
     }
     if ($names === []) {
+        echo '<p class="muted">' . h(LOC('panoptes.trend.source_empty')) . '</p>';
         return;
     }
     echo '<table><tr><th>' . h(LOC('panoptes.col.period')) . '</th>';
@@ -102,7 +103,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $isAdmin && hash_equals(
     $notice = LOC('panoptes.settings.saved');
 }
 
-$loaded = panoptes_load(isset($_GET['refresh']) && $isAdmin);
+$doRefresh = isset($_GET['refresh']) && $isAdmin;
+$loaded = panoptes_load($doRefresh);
+if ($doRefresh) {
+    // Zelfde snapshot als hourly/nightly, zodat week/maand meteen de verse stand tonen.
+    panoptes_store_snapshot(panoptes_today(), panoptes_summary($loaded));
+}
 $settings = panoptes_settings();
 $copilot = panoptes_parse_copilot($loaded['copilot']['data'] ?? null);
 $pp = panoptes_parse_powerplatform($loaded['powerplatform']['data'] ?? null);

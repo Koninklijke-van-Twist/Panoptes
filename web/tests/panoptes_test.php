@@ -157,6 +157,21 @@ $GLOBALS['PANOPTES_TODAY'] = '2026-11-13';
 check(str_starts_with(panoptes_maybe_send_weekly(['copilot' => [], 'powerplatform' => []], true), 'verzonden'), 'mail ondanks niet gekoppeld');
 check(str_contains($sent[0], PANOPTES_NOT_LINKED), 'mail noemt niet gekoppeld');
 
+// Snapshot: eenzijdige fout wist de andere bron van vandaag niet
+panoptes_store_snapshot('2026-11-05', [
+    'copilot' => ['prepaidCredits' => ['purchased' => 0, 'consumed' => 10, 'remaining' => 0]],
+    'powerplatform' => ['AI' => ['purchased' => 25000, 'allocated' => 0, 'consumed' => 100]],
+]);
+panoptes_store_snapshot('2026-11-05', [
+    'copilot' => ['prepaidCredits' => ['purchased' => 0, 'consumed' => 12, 'remaining' => 0]],
+    'powerplatform' => [],
+]);
+$day = panoptes_history()['2026-11-05'];
+check(($day['copilot']['prepaidCredits']['consumed'] ?? null) === 12, 'copilot bijgewerkt bij partial');
+check(($day['powerplatform']['AI']['consumed'] ?? null) === 100, 'pp behouden bij eenzijdige fout');
+$weeks = panoptes_history_by_period(panoptes_history(), 'o-\WW');
+check(isset($weeks['2026-W45']['powerplatform']['AI']), 'weekperiode bevat pp');
+
 foreach (array_diff(scandir($GLOBALS['PANOPTES_DATA_DIR']) ?: [], ['.', '..']) as $file) {
     unlink($GLOBALS['PANOPTES_DATA_DIR'] . '/' . $file);
 }
