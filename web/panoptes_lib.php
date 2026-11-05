@@ -585,6 +585,14 @@ function panoptes_store_snapshot(string $date, array $summary): void
         return; // geen lege dagen opslaan bij een fout
     }
     $history = panoptes_history();
+    $prev = is_array($history[$date] ?? null) ? $history[$date] : [];
+    // Bij een eenzijdige fout de andere bron van vandaag niet wissen.
+    if ($summary['copilot'] === [] && !empty($prev['copilot']) && is_array($prev['copilot'])) {
+        $summary['copilot'] = $prev['copilot'];
+    }
+    if ($summary['powerplatform'] === [] && !empty($prev['powerplatform']) && is_array($prev['powerplatform'])) {
+        $summary['powerplatform'] = $prev['powerplatform'];
+    }
     $history[$date] = $summary;
     panoptes_write_json('history.json', $history);
 }
