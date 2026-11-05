@@ -85,11 +85,11 @@ function panoptes_default_credit_rates(): array
             'source_date' => '2026-11-05',
         ],
         'apppassforteams' => [
-            'usd_per_unit' => null,
+            'usd_per_unit' => 0.0,
             'currency' => 'USD',
-            'kind' => 'unknown',
+            'kind' => 'approx',
             'label' => 'AppPass for Teams',
-            'basis' => 'Meestal inbegrepen bij M365; geen apart list-tarief per unit',
+            'basis' => 'Inbegrepen bij gekwalificeerde Microsoft 365; geen aparte list-SKU → $0/unit',
             'source_url' => 'https://learn.microsoft.com/en-us/power-platform/admin/powerapps-flow-licensing-faq',
             'source_date' => '2026-11-05',
         ],
@@ -157,21 +157,21 @@ function panoptes_default_credit_rates(): array
             'source_date' => '2026-11-05',
         ],
         'portalviews' => [
-            'usd_per_unit' => null,
+            'usd_per_unit' => 0.001,
             'currency' => 'USD',
-            'kind' => 'unknown',
+            'kind' => 'approx',
             'label' => 'Portal views (legacy)',
-            'basis' => 'Geen actueel Microsoft list-tarief per page view gevonden',
-            'source_url' => 'https://learn.microsoft.com/en-us/rest/api/power-platform/licensing/currency-reports/list-currency-reports',
+            'basis' => 'Legacy Power Apps Portals page-view pack $100 ÷ 100.000 views',
+            'source_url' => 'https://learn.microsoft.com/en-us/power-platform/admin/powerapps-flow-licensing-faq',
             'source_date' => '2026-11-05',
         ],
         'portaladdons' => [
-            'usd_per_unit' => null,
+            'usd_per_unit' => 100.0,
             'currency' => 'USD',
-            'kind' => 'unknown',
+            'kind' => 'approx',
             'label' => 'Portal add-ons',
-            'basis' => 'Geen eenduidig list-tarief per unit',
-            'source_url' => 'https://learn.microsoft.com/en-us/rest/api/power-platform/licensing/currency-reports/list-currency-reports',
+            'basis' => 'Ruwe benadering: 1× legacy portals page-view capacity add-on ($100/unit/maand)',
+            'source_url' => 'https://learn.microsoft.com/en-us/power-platform/admin/powerapps-flow-licensing-faq',
             'source_date' => '2026-11-05',
         ],
         'processminingdatastorage' => [
@@ -184,29 +184,50 @@ function panoptes_default_credit_rates(): array
             'source_date' => '2026-11-05',
         ],
         'mcssessions' => [
-            'usd_per_unit' => null,
+            'usd_per_unit' => 0.5,
             'currency' => 'USD',
-            'kind' => 'unknown',
+            'kind' => 'approx',
             'label' => 'MCS sessions (legacy)',
-            'basis' => 'Vervangen door Copilot Credits; geen actueel per-session list-tarief',
+            'basis' => 'Oude Power Virtual Agents-tenantlicentie $1.000 ÷ 2.000 sessies = $0,50/sessie',
             'source_url' => 'https://learn.microsoft.com/en-us/microsoft-copilot-studio/requirements-messages-management',
             'source_date' => '2026-11-05',
         ],
         'vaconversations' => [
-            'usd_per_unit' => null,
+            'usd_per_unit' => 0.5,
             'currency' => 'USD',
-            'kind' => 'unknown',
+            'kind' => 'approx',
             'label' => 'VA conversations (legacy)',
-            'basis' => 'Legacy Virtual Agent-meter; geen actueel list-tarief',
-            'source_url' => 'https://learn.microsoft.com/en-us/rest/api/power-platform/licensing/currency-reports/list-currency-reports',
+            'basis' => 'Zelfde legacy PVA-sessieprijs: $1.000 ÷ 2.000 sessies = $0,50',
+            'source_url' => 'https://learn.microsoft.com/en-us/microsoft-copilot-studio/requirements-messages-management',
             'source_date' => '2026-11-05',
         ],
+        // Windows 365 for Agents PAYG (tenant capacity; unit ≈ Cloud PC-uur)
+        'w365apaygo' => [
+            'usd_per_unit' => 0.52,
+            'currency' => 'USD',
+            'kind' => 'approx',
+            'label' => 'Windows 365 for Agents PAYG',
+            'basis' => 'Europe-geografie $0,52 per Cloud PC-uur (US list $0,40); unit ≈ uur',
+            'source_url' => 'https://learn.microsoft.com/en-us/windows-365/agents/pricing-paygo-always-available',
+            'source_date' => '2026-11-05',
+        ],
+        // Seat-count van Microsoft 365 Copilot in de tenant
+        'tenantm365copilot' => [
+            'usd_per_unit' => 30.0,
+            'currency' => 'USD',
+            'kind' => 'list',
+            'label' => 'Microsoft 365 Copilot (tenant seats)',
+            'basis' => '$30 per user/maand (Enterprise add-on, yearly billing)',
+            'source_url' => 'https://www.microsoft.com/en-us/copilot/pricing/enterprise',
+            'source_date' => '2026-11-05',
+        ],
+        // Geen verbruikscurrency — facturerings-/entitlementlabel in currencyReports
         'invoice' => [
             'usd_per_unit' => null,
             'currency' => 'USD',
-            'kind' => 'unknown',
+            'kind' => 'na',
             'label' => 'Invoice',
-            'basis' => 'Geen openbaar Microsoft list-tarief per unit',
+            'basis' => 'Geen credit-/capaciteitsunit; entitlementlabel in currencyReports → geen kostenschatting',
             'source_url' => 'https://learn.microsoft.com/en-us/rest/api/power-platform/licensing/currency-reports/list-currency-reports',
             'source_date' => '2026-11-05',
         ],
@@ -328,15 +349,20 @@ function panoptes_credit_rate_tooltip(string $category): string
 {
     $rate = panoptes_credit_rate_for($category);
     $parts = [];
-    if (($rate['usd_per_unit'] ?? null) !== null) {
+    $kind = (string) ($rate['kind'] ?? '');
+    if ($kind === 'na') {
+        $parts[] = 'Geen creditcategorie';
+    } elseif (($rate['usd_per_unit'] ?? null) !== null) {
         $parts[] = 'List/benadering: $' . rtrim(rtrim(number_format((float) $rate['usd_per_unit'], 6, '.', ''), '0'), '.') . ' USD/unit';
     } else {
         $parts[] = 'Tarief onbekend';
     }
-    if (($rate['kind'] ?? '') === 'approx') {
+    if ($kind === 'approx') {
         $parts[] = 'benadering';
-    } elseif (($rate['kind'] ?? '') === 'list') {
+    } elseif ($kind === 'list') {
         $parts[] = 'list price';
+    } elseif ($kind === 'na') {
+        $parts[] = 'n.v.t.';
     }
     if (($rate['basis'] ?? '') !== '') {
         $parts[] = (string) $rate['basis'];

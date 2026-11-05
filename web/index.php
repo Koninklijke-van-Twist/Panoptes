@@ -63,14 +63,16 @@ function panoptes_render_raw(array $source): void
 function panoptes_render_cost_cell(?float $consumed, string $category): string
 {
     $rate = panoptes_credit_rate_for($category);
-    $unknown = ($rate['usd_per_unit'] ?? null) === null;
-    $cost = panoptes_estimate_cost($consumed, $category);
-    $label = panoptes_fmt_usd($cost, $unknown);
+    $kind = (string) ($rate['kind'] ?? '');
+    $na = $kind === 'na';
+    $unknown = !$na && ($rate['usd_per_unit'] ?? null) === null;
+    $cost = $na ? null : panoptes_estimate_cost($consumed, $category);
+    $label = $na ? '–' : panoptes_fmt_usd($cost, $unknown);
     if ($unknown && $consumed === null) {
         $label = '–';
     }
     $title = h(panoptes_credit_rate_tooltip($category));
-    $extra = (($rate['kind'] ?? '') === 'approx' && !$unknown) ? ' <span class="muted">(' . h(LOC('panoptes.cost.approx_note')) . ')</span>' : '';
+    $extra = (($kind === 'approx') && !$unknown && !$na) ? ' <span class="muted">(' . h(LOC('panoptes.cost.approx_note')) . ')</span>' : '';
 
     return '<td class="num" title="' . $title . '">' . h($label) . $extra . '</td>';
 }
@@ -106,7 +108,7 @@ function panoptes_render_trend(array $periods, string $key): void
         echo '<p class="muted">' . h(LOC('panoptes.trend.source_empty')) . '</p>';
         return;
     }
-    echo '<table><tr><th>' . h(LOC('panoptes.col.period')) . '</th>';
+    echo '<div class="table-wrap"><table><tr><th>' . h(LOC('panoptes.col.period')) . '</th>';
     foreach (array_keys($names) as $name) {
         echo '<th>' . h((string) $name) . '</th>';
         echo '<th class="num">' . h(LOC('panoptes.col.est_cost')) . '</th>';
@@ -127,7 +129,7 @@ function panoptes_render_trend(array $periods, string $key): void
         echo '</tr>';
         $previous = $summary;
     }
-    echo '</table>';
+    echo '</table></div>';
 }
 
 /**
@@ -172,13 +174,14 @@ if ($linkResult !== null) {
     <?php renderLanguageSwitcherStyles(); ?>
     <style>
         body { margin: 0; }
-        main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+        main { max-width: min(1200px, 100%); margin: 0 auto; padding: 24px 16px 48px; box-sizing: border-box; }
         header img { max-height: 44px; }
-        section { background: var(--kvt-panel-bg); border: 1px solid var(--kvt-line); border-radius: 10px; padding: 16px 20px; margin-top: 18px; }
+        section { background: var(--kvt-panel-bg); border: 1px solid var(--kvt-line); border-radius: 10px; padding: 16px 20px; margin-top: 18px; overflow: hidden; }
         h1 { color: var(--kvt-perkins-blue); margin: 12px 0 4px; }
         h2 { color: var(--kvt-perkins-blue); font-size: 1.15rem; margin-top: 0; }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--kvt-line); }
+        .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+        table { border-collapse: collapse; width: 100%; min-width: max-content; }
+        th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--kvt-line); white-space: nowrap; }
         th { background: var(--kvt-page-bg); }
         .num { text-align: right; font-variant-numeric: tabular-nums; }
         .muted { color: var(--kvt-muted); font-size: .9rem; }
@@ -188,6 +191,10 @@ if ($linkResult !== null) {
         form label { display: block; margin: 8px 0 4px; }
         form input[type=number], form input[type=email] { padding: 6px; width: 260px; }
         button, .btn { background: var(--kvt-main-blue); color: #fff; border: 0; border-radius: 6px; padding: 8px 14px; cursor: pointer; text-decoration: none; display: inline-block; }
+        @media (max-width: 640px) {
+            main { padding: 16px 10px 36px; }
+            section { padding: 12px 12px; }
+        }
     </style>
 </head>
 <body>
@@ -217,12 +224,14 @@ if ($linkResult !== null) {
         <?php if ($copilot['recognized']): ?>
             <?php if ($copilot['rows'] === []): ?><p class="muted"><?= h(LOC('panoptes.empty')) ?></p><?php else: ?>
             <p class="muted"><?= h(LOC('panoptes.cost.disclaimer')) ?></p>
+            <div class="table-wrap">
             <table>
                 <tr><th><?= h(LOC('panoptes.col.method')) ?></th><th class="num"><?= h(LOC('panoptes.col.purchased')) ?></th><th class="num"><?= h(LOC('panoptes.col.consumed')) ?></th><th class="num"><?= h(LOC('panoptes.col.remaining')) ?></th><th class="num"><?= h(LOC('panoptes.col.est_cost')) ?></th><th><?= h(LOC('panoptes.col.updated')) ?></th></tr>
                 <?php foreach ($copilot['rows'] as $row): ?>
                     <tr><td><?= h($row['name']) ?></td><td class="num"><?= panoptes_fmt($row['purchased']) ?></td><td class="num"><?= panoptes_fmt($row['consumed']) ?></td><td class="num"><?= panoptes_fmt($row['remaining']) ?></td><?= panoptes_render_cost_cell($row['consumed'], $row['name']) ?><td><?= h(panoptes_dt($copilot['last_modified'])) ?></td></tr>
                 <?php endforeach; ?>
             </table>
+            </div>
             <?php panoptes_render_cost_total($copilot['rows']); ?>
             <?php endif; ?>
         <?php else: panoptes_render_raw($loaded['copilot'] ?? []); endif; ?>
@@ -234,12 +243,14 @@ if ($linkResult !== null) {
         <?php if ($pp['recognized']): ?>
             <?php if ($pp['rows'] === []): ?><p class="muted"><?= h(LOC('panoptes.empty')) ?></p><?php else: ?>
             <p class="muted"><?= h(LOC('panoptes.cost.disclaimer')) ?></p>
+            <div class="table-wrap">
             <table>
                 <tr><th><?= h(LOC('panoptes.col.category')) ?></th><th class="num"><?= h(LOC('panoptes.col.purchased')) ?></th><th class="num"><?= h(LOC('panoptes.col.allocated')) ?></th><th class="num"><?= h(LOC('panoptes.col.consumed')) ?></th><th class="num"><?= h(LOC('panoptes.col.est_cost')) ?></th><th><?= h(LOC('panoptes.col.updated')) ?></th></tr>
                 <?php foreach ($pp['rows'] as $row): ?>
                     <tr><td><?= h($row['name']) ?></td><td class="num"><?= panoptes_fmt($row['purchased']) ?></td><td class="num"><?= panoptes_fmt($row['allocated']) ?></td><td class="num"><?= panoptes_fmt($row['consumed']) ?></td><?= panoptes_render_cost_cell($row['consumed'], $row['name']) ?><td><?= h(panoptes_dt($row['last_updated'])) ?></td></tr>
                 <?php endforeach; ?>
             </table>
+            </div>
             <?php panoptes_render_cost_total($pp['rows']); ?>
             <?php endif; ?>
         <?php else: panoptes_render_raw($loaded['powerplatform'] ?? []); endif; ?>
