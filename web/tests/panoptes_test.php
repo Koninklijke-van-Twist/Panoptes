@@ -118,7 +118,12 @@ try {
     panoptes_delegated_pp_token();
     check(false, 'PP zonder consent moet falen');
 } catch (RuntimeException $e) {
-    check(!($e instanceof PanoptesNotLinkedException) && str_contains($e->getMessage(), 'Power Platform API') && !str_contains($e->getMessage(), 'RT3'), 'PP consent-melding');
+    $msg = $e->getMessage();
+    check(!($e instanceof PanoptesNotLinkedException) && str_contains($msg, PANOPTES_PP_API_NAME) && !str_contains($msg, 'RT3'), 'PP consent-melding');
+    check(str_contains($msg, 'AADSTS65001') && str_contains($msg, PANOPTES_PP_SCOPE), 'PP consent AADSTS + scope');
+    check(str_contains($msg, PANOPTES_PP_DELEGATED_PERMISSIONS[0]) && str_contains($msg, 'gedelegeerd'), 'PP consent noemt gedelegeerde machtiging');
+    check(str_contains($msg, PANOPTES_PP_API_APP_ID) && str_contains($msg, 'service principal'), 'PP consent app-id + service principal');
+    check(str_contains($msg, "API's die mijn organisatie gebruikt"), 'PP consent Entra-stappen');
 }
 check(panoptes_delegated_status()['linked'], 'Graph-koppeling blijft na PP-consentfout');
 $saved = $GLOBALS['PANOPTES_HTTP'];

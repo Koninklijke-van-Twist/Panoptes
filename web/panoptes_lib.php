@@ -10,6 +10,15 @@
 const PANOPTES_CACHE_TTL = 3600; // bron is ~4 uur oud; 1 uur cache is ruim voldoende
 const PANOPTES_GRAPH_URL = 'https://graph.microsoft.com/beta/copilot/costManagement/getTenantCreditBalance';
 const PANOPTES_PP_SCOPE = 'https://api.powerplatform.com/.default';
+/** Weergavenaam in Entra (API's die mijn organisatie gebruikt). */
+const PANOPTES_PP_API_NAME = 'Power Platform API';
+/** Resource-app-id van de Power Platform API in Entra (docs Microsoft). */
+const PANOPTES_PP_API_APP_ID = '8578e004-a5c6-46e7-913e-12f58912df43';
+/**
+ * Gedelegeerde machtigingen die bij PANOPTES_PP_SCOPE horen (currencyReports / allocations).
+ * Power Platform API kent alleen gedelegeerde machtigingen.
+ */
+const PANOPTES_PP_DELEGATED_PERMISSIONS = ['Licensing.Allocations.Read'];
 const PANOPTES_PP_URL = 'https://api.powerplatform.com/licensing/tenantCapacity/currencyReports?includeAllocations=true&includeConsumptions=true&api-version=2024-10-01';
 const PANOPTES_MAIL_SUBJECT = 'Co-Pilot Verbruik';
 const PANOPTES_DELEGATED_SCOPE = 'openid profile offline_access https://graph.microsoft.com/CopilotCostManagement.Read.All';
@@ -299,6 +308,45 @@ function panoptes_delegated_token(): string
 }
 
 /**
+ * Eerste AADSTS-code uit een Entra error_description, of leeg.
+ */
+function panoptes_aadsts_code(string $detail): string
+{
+    return preg_match('/\b(AADSTS\d+)\b/', $detail, $m) === 1 ? $m[1] : '';
+}
+
+/**
+ * Fouttekst bij ontbrekende Power Platform-toestemming, gegenereerd uit de scope-configuratie.
+ */
+function panoptes_pp_consent_error(string $detail): string
+{
+    $perms = PANOPTES_PP_DELEGATED_PERMISSIONS;
+    $permList = implode(', ', $perms);
+    $permSteps = implode(' > ', $perms);
+    $scope = PANOPTES_PP_SCOPE;
+    $api = PANOPTES_PP_API_NAME;
+    $appId = PANOPTES_PP_API_APP_ID;
+    $aadsts = panoptes_aadsts_code($detail);
+    $msg = 'Geen toestemming voor de ' . $api . ' (Entra-app-id ' . $appId . ') met het gekoppelde account.'
+        . ' Ontbrekende machtiging(en): gedelegeerd ' . $permList
+        . ' (aangevraagde scope: ' . $scope . ').'
+        . " Stappen: Een machtiging toevoegen > API's die mijn organisatie gebruikt > zoeken op '" . $api . "' > gedelegeerd > "
+        . $permSteps . ' > Beheerderstoestemming verlenen > opnieuw koppelen.'
+        . ' Staat de ' . $api . ' niet in de lijst van de tenant, voeg die eerst toe als service principal'
+        . ' (New-MgServicePrincipal -AppId ' . $appId . ' of: az ad sp create --id ' . $appId . ').';
+    $tail = $detail !== '' ? $detail : 'geen details';
+    if ($aadsts === 'AADSTS65001') {
+        $msg .= ' (' . $aadsts . '; ontbrekende/aangevraagde scope: ' . $scope . '; ' . $tail . ')';
+    } elseif ($aadsts !== '') {
+        $msg .= ' (' . $aadsts . '; scope: ' . $scope . '; ' . $tail . ')';
+    } else {
+        $msg .= ' (scope: ' . $scope . '; ' . $tail . ')';
+    }
+
+    return $msg;
+}
+
+/**
  * Gedelegeerd token voor de Power Platform API: hetzelfde refresh token wordt (v2-endpoint) ingewisseld
  * voor de resource https://api.powerplatform.com. Bij inloggen vragen we alleen Graph-scopes
  * (resources mogen niet gemengd worden in één authorize-request).
@@ -320,7 +368,7 @@ function panoptes_delegated_pp_token(): string
         $error = (string) ($json['error'] ?? '');
         $detail = strtok((string) ($json['error_description'] ?? $error), "\r\n");
         if (in_array($error, ['invalid_grant', 'consent_required', 'interaction_required'], true)) {
-            throw new RuntimeException('Geen toestemming voor de Power Platform API met het gekoppelde account. Voeg in de app-registratie de gedelegeerde Power Platform API-machtiging toe, verleen beheerderstoestemming en koppel opnieuw. (' . $detail . ')');
+            throw new RuntimeException(panoptes_pp_consent_error($detail));
         }
         throw new RuntimeException('Power Platform-token ophalen mislukt (HTTP ' . (int) $json['_status'] . '): ' . $detail);
     }
