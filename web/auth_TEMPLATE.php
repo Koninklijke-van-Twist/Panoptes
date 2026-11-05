@@ -30,10 +30,14 @@ $panoptesAdmins = [
 // - Power Platform-beheercentrum > Instellingen > Beheerinstellingen > Power Platform API:
 //   registreer dezelfde client-id als beheer-app (of: pac admin application register --application-id <client-id>).
 //   Alleen nodig als fallback zonder gekoppeld account: met een gekoppeld account gaat Power Platform gedelegeerd.
-// - API-machtigingen > API's die mijn organisatie gebruikt > "Power Platform API" > Gedelegeerde machtigingen:
-//   waarschijnlijk Licensing.Allocations.Read (currencyReports noemt in de docs geen specifieke machtiging, controleer),
+// - API-machtigingen > API's die mijn organisatie gebruikt > "Power Platform API"
+//   (Entra-app-id 8578e004-a5c6-46e7-913e-12f58912df43) > Gedelegeerde machtigingen:
+//   Licensing.Allocations.Read (scope bij refresh: https://api.powerplatform.com/.default),
 //   daarna beheerderstoestemming verlenen en opnieuw "Koppel Copilot-account".
-//   Zie https://learn.microsoft.com/power-platform/admin/programmability-permission-reference
+//   Staat "Power Platform API" niet in de lijst: eerst service principal toevoegen
+//   (New-MgServicePrincipal -AppId 8578e004-a5c6-46e7-913e-12f58912df43 of az ad sp create --id …).
+//   Zie https://learn.microsoft.com/power-platform/admin/programmability-authentication-v2
+//   en https://learn.microsoft.com/power-platform/admin/programmability-permission-reference
 $panoptesTenantId = 'TENANT_ID';         // Map-id (tenant-id)
 $panoptesClientId = 'CLIENT_ID';         // Toepassings-id (client-id)
 $panoptesClientSecret = 'CLIENT_SECRET'; // Waarde van het clientgeheim
