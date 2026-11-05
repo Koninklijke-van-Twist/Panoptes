@@ -60,6 +60,39 @@ function panoptes_render_raw(array $source): void
     }
 }
 
+function panoptes_render_cost_cell(?float $consumed, string $category): string
+{
+    $rate = panoptes_credit_rate_for($category);
+    $unknown = ($rate['usd_per_unit'] ?? null) === null;
+    $cost = panoptes_estimate_cost($consumed, $category);
+    $label = panoptes_fmt_usd($cost, $unknown);
+    if ($unknown && $consumed === null) {
+        $label = '–';
+    }
+    $title = h(panoptes_credit_rate_tooltip($category));
+    $extra = (($rate['kind'] ?? '') === 'approx' && !$unknown) ? ' <span class="muted">(' . h(LOC('panoptes.cost.approx_note')) . ')</span>' : '';
+
+    return '<td class="num" title="' . $title . '">' . h($label) . $extra . '</td>';
+}
+
+function panoptes_render_cost_total(array $rows): void
+{
+    $total = 0.0;
+    $any = false;
+    foreach ($rows as $row) {
+        $cost = panoptes_estimate_cost($row['consumed'] ?? null, (string) ($row['name'] ?? ''));
+        if ($cost !== null) {
+            $total += $cost;
+            $any = true;
+        }
+    }
+    if (!$any) {
+        return;
+    }
+    echo '<p class="muted" title="' . h(LOC('panoptes.cost.disclaimer')) . '"><strong>'
+        . h(LOC('panoptes.cost.total')) . ':</strong> ' . h(panoptes_fmt_usd($total)) . '</p>';
+}
+
 function panoptes_render_trend(array $periods, string $key): void
 {
     $periods = array_slice($periods, -12, null, true);
@@ -76,6 +109,7 @@ function panoptes_render_trend(array $periods, string $key): void
     echo '<table><tr><th>' . h(LOC('panoptes.col.period')) . '</th>';
     foreach (array_keys($names) as $name) {
         echo '<th>' . h((string) $name) . '</th>';
+        echo '<th class="num">' . h(LOC('panoptes.col.est_cost')) . '</th>';
     }
     echo '</tr>';
     $previous = null;
@@ -83,8 +117,12 @@ function panoptes_render_trend(array $periods, string $key): void
         echo '<tr><td>' . h((string) $period) . '</td>';
         foreach (array_keys($names) as $name) {
             $now = $summary[$key][$name]['consumed'] ?? null;
-            $delta = $previous === null ? '' : ' <span class="muted">(' . panoptes_delta($now, $previous[$key][$name]['consumed'] ?? null) . ')</span>';
+            $before = $previous[$key][$name]['consumed'] ?? null;
+            $delta = $previous === null ? '' : ' <span class="muted">(' . panoptes_delta($now, $before) . ')</span>';
             echo '<td class="num">' . panoptes_fmt($now) . $delta . '</td>';
+            // Kosten van het periodedelda (verbruik in deze periode), anders absolute stand.
+            $units = $previous === null || $now === null || $before === null ? $now : ($now - $before);
+            echo panoptes_render_cost_cell($units, (string) $name);
         }
         echo '</tr>';
         $previous = $summary;
@@ -178,12 +216,14 @@ if ($linkResult !== null) {
         <?php endif; ?>
         <?php if ($copilot['recognized']): ?>
             <?php if ($copilot['rows'] === []): ?><p class="muted"><?= h(LOC('panoptes.empty')) ?></p><?php else: ?>
+            <p class="muted"><?= h(LOC('panoptes.cost.disclaimer')) ?></p>
             <table>
-                <tr><th><?= h(LOC('panoptes.col.method')) ?></th><th class="num"><?= h(LOC('panoptes.col.purchased')) ?></th><th class="num"><?= h(LOC('panoptes.col.consumed')) ?></th><th class="num"><?= h(LOC('panoptes.col.remaining')) ?></th><th><?= h(LOC('panoptes.col.updated')) ?></th></tr>
+                <tr><th><?= h(LOC('panoptes.col.method')) ?></th><th class="num"><?= h(LOC('panoptes.col.purchased')) ?></th><th class="num"><?= h(LOC('panoptes.col.consumed')) ?></th><th class="num"><?= h(LOC('panoptes.col.remaining')) ?></th><th class="num"><?= h(LOC('panoptes.col.est_cost')) ?></th><th><?= h(LOC('panoptes.col.updated')) ?></th></tr>
                 <?php foreach ($copilot['rows'] as $row): ?>
-                    <tr><td><?= h($row['name']) ?></td><td class="num"><?= panoptes_fmt($row['purchased']) ?></td><td class="num"><?= panoptes_fmt($row['consumed']) ?></td><td class="num"><?= panoptes_fmt($row['remaining']) ?></td><td><?= h(panoptes_dt($copilot['last_modified'])) ?></td></tr>
+                    <tr><td><?= h($row['name']) ?></td><td class="num"><?= panoptes_fmt($row['purchased']) ?></td><td class="num"><?= panoptes_fmt($row['consumed']) ?></td><td class="num"><?= panoptes_fmt($row['remaining']) ?></td><?= panoptes_render_cost_cell($row['consumed'], $row['name']) ?><td><?= h(panoptes_dt($copilot['last_modified'])) ?></td></tr>
                 <?php endforeach; ?>
             </table>
+            <?php panoptes_render_cost_total($copilot['rows']); ?>
             <?php endif; ?>
         <?php else: panoptes_render_raw($loaded['copilot'] ?? []); endif; ?>
     </section>
@@ -193,12 +233,14 @@ if ($linkResult !== null) {
         <?php panoptes_render_error($loaded['powerplatform'] ?? []); ?>
         <?php if ($pp['recognized']): ?>
             <?php if ($pp['rows'] === []): ?><p class="muted"><?= h(LOC('panoptes.empty')) ?></p><?php else: ?>
+            <p class="muted"><?= h(LOC('panoptes.cost.disclaimer')) ?></p>
             <table>
-                <tr><th><?= h(LOC('panoptes.col.category')) ?></th><th class="num"><?= h(LOC('panoptes.col.purchased')) ?></th><th class="num"><?= h(LOC('panoptes.col.allocated')) ?></th><th class="num"><?= h(LOC('panoptes.col.consumed')) ?></th><th><?= h(LOC('panoptes.col.updated')) ?></th></tr>
+                <tr><th><?= h(LOC('panoptes.col.category')) ?></th><th class="num"><?= h(LOC('panoptes.col.purchased')) ?></th><th class="num"><?= h(LOC('panoptes.col.allocated')) ?></th><th class="num"><?= h(LOC('panoptes.col.consumed')) ?></th><th class="num"><?= h(LOC('panoptes.col.est_cost')) ?></th><th><?= h(LOC('panoptes.col.updated')) ?></th></tr>
                 <?php foreach ($pp['rows'] as $row): ?>
-                    <tr><td><?= h($row['name']) ?></td><td class="num"><?= panoptes_fmt($row['purchased']) ?></td><td class="num"><?= panoptes_fmt($row['allocated']) ?></td><td class="num"><?= panoptes_fmt($row['consumed']) ?></td><td><?= h(panoptes_dt($row['last_updated'])) ?></td></tr>
+                    <tr><td><?= h($row['name']) ?></td><td class="num"><?= panoptes_fmt($row['purchased']) ?></td><td class="num"><?= panoptes_fmt($row['allocated']) ?></td><td class="num"><?= panoptes_fmt($row['consumed']) ?></td><?= panoptes_render_cost_cell($row['consumed'], $row['name']) ?><td><?= h(panoptes_dt($row['last_updated'])) ?></td></tr>
                 <?php endforeach; ?>
             </table>
+            <?php panoptes_render_cost_total($pp['rows']); ?>
             <?php endif; ?>
         <?php else: panoptes_render_raw($loaded['powerplatform'] ?? []); endif; ?>
     </section>

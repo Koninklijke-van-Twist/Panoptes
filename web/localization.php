@@ -57,6 +57,11 @@ const TRANSLATIONS = [
         'panoptes.settings.save' => 'Opslaan',
         'panoptes.settings.saved' => 'Instellingen opgeslagen.',
         'panoptes.settings.last_mail' => 'Laatste weekmail: %s',
+        'panoptes.col.est_cost' => 'Geschatte kosten',
+        'panoptes.cost.disclaimer' => 'Geschatte kosten op basis van Microsoft list prices (USD). KVT kan andere contractprijzen hebben. Hover over een bedrag voor tarief en bron.',
+        'panoptes.cost.total' => 'Totaal geschat (zichtbare categorieën met tarief)',
+        'panoptes.cost.unknown' => 'tarief onbekend',
+        'panoptes.cost.approx_note' => 'benadering',
     ],
     'en' => [
         'lang.menu_aria' => 'Choose language',
@@ -93,6 +98,11 @@ const TRANSLATIONS = [
         'panoptes.settings.save' => 'Save',
         'panoptes.settings.saved' => 'Settings saved.',
         'panoptes.settings.last_mail' => 'Last weekly mail: %s',
+        'panoptes.col.est_cost' => 'Estimated cost',
+        'panoptes.cost.disclaimer' => 'Estimated cost based on Microsoft list prices (USD). KVT may have different contract pricing. Hover an amount for rate and source.',
+        'panoptes.cost.total' => 'Estimated total (visible categories with a known rate)',
+        'panoptes.cost.unknown' => 'rate unknown',
+        'panoptes.cost.approx_note' => 'approximation',
     ],
 ];
 

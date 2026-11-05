@@ -172,6 +172,23 @@ check(($day['powerplatform']['AI']['consumed'] ?? null) === 100, 'pp behouden bi
 $weeks = panoptes_history_by_period(panoptes_history(), 'o-\WW');
 check(isset($weeks['2026-W45']['powerplatform']['AI']), 'weekperiode bevat pp');
 
+
+// Credit-tarieven en kostenschatting
+check(panoptes_credit_rate_for('AI')['usd_per_unit'] === 0.0005, 'AI Builder T1-tarief');
+check(panoptes_credit_rate_for('AI_BUILDER_CREDITS')['usd_per_unit'] === 0.0005, 'AI alias');
+check(panoptes_credit_rate_for('MCSMessages')['usd_per_unit'] === 0.01, 'MCSMessages PAYG');
+check(panoptes_credit_rate_for('prepaid')['usd_per_unit'] === 0.008, 'prepaid pack-benadering');
+check(panoptes_credit_rate_for('payAsYouGo')['usd_per_unit'] === 0.01, 'PAYG Copilot');
+check(abs(panoptes_estimate_cost(1000000.0, 'AI') - 500.0) < 0.0001, '1M AI credits ≈ $500');
+check(abs(panoptes_estimate_cost(25000.0, 'MCSMessages') - 250.0) < 0.0001, '25k MCS ≈ $250 PAYG');
+check(panoptes_estimate_cost(10.0, 'Invoice') === null, 'Invoice zonder tarief');
+check(panoptes_fmt_usd(null, true) === 'tarief onbekend', 'fmt onbekend');
+check(str_contains(panoptes_credit_rate_tooltip('AI'), 'learn.microsoft.com'), 'tooltip bron');
+$panoptesCreditRates = ['AI' => ['usd_per_unit' => 0.0004]];
+check(panoptes_credit_rate_for('AI')['usd_per_unit'] === 0.0004, 'auth override');
+unset($GLOBALS['panoptesCreditRates']);
+$panoptesCreditRates = null;
+
 foreach (array_diff(scandir($GLOBALS['PANOPTES_DATA_DIR']) ?: [], ['.', '..']) as $file) {
     unlink($GLOBALS['PANOPTES_DATA_DIR'] . '/' . $file);
 }

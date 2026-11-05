@@ -49,3 +49,9 @@ $reportMail = [
     'from_name' => 'Panoptes',
     // 'smtp' => ['host' => 'SMTP_HOST', 'port' => 587, 'encryption' => 'tls', 'username' => 'USERNAME', 'password' => 'PASSWORD'],
 ];
+
+// Optioneel: overschrijf list-price schattingen (USD per unit). Zie web/lib/credit_rates.php.
+// $panoptesCreditRates = [
+//     'AI' => ['usd_per_unit' => 0.0004, 'kind' => 'approx', 'basis' => 'KVT-contract'],
+//     'prepaid' => ['usd_per_unit' => 0.008],
+// ];
