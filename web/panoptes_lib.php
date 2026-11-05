@@ -7,6 +7,8 @@
  * bij een deploy staan (deploy-ftp.yml slaat data/** over).
  */
 
+require_once __DIR__ . '/lib/credit_rates.php';
+
 const PANOPTES_CACHE_TTL = 3600; // bron is ~4 uur oud; 1 uur cache is ruim voldoende
 const PANOPTES_GRAPH_URL = 'https://graph.microsoft.com/beta/copilot/costManagement/getTenantCreditBalance';
 const PANOPTES_PP_SCOPE = 'https://api.powerplatform.com/.default';
